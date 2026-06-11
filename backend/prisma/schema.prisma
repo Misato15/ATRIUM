@@ -1,0 +1,166 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserRole {
+  ARTIST
+  CLIENT
+  ADMIN
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  EMBED
+}
+
+model User {
+  id           Int            @id @default(autoincrement())
+  email        String         @unique
+  passwordHash String
+  role         UserRole       @default(ARTIST)
+  profile      ArtistProfile?
+  portfolioLikes PortfolioLike[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ArtistProfile {
+  id              Int             @id @default(autoincrement())
+  userId          Int             @unique
+  fullName        String?
+  artistName      String?
+  bio             String?         @db.Text
+  categoryId      Int?
+  category        ArtistCategory? @relation(fields: [categoryId], references: [id])
+  location        String?
+  profileImageUrl String?
+  coverImageUrl   String?
+  portfolioItems  PortfolioItem[]
+  commissionRequests CommissionRequest[]
+  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PortfolioItem {
+  id              Int       @id @default(autoincrement())
+  artistProfileId Int
+  title           String
+  description     String?   @db.Text
+  mediaType       MediaType
+  mediaUrl        String
+  thumbnailUrl    String?
+  viewCount       Int       @default(0)
+  likeCount       Int       @default(0)
+
+  artistProfile ArtistProfile @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  likes         PortfolioLike[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PortfolioLike {
+  id              Int           @id @default(autoincrement())
+  userId          Int
+  portfolioItemId Int
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolioItem   PortfolioItem @relation(fields: [portfolioItemId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@unique([userId, portfolioItemId])
+}
+
+model ArtistCategory {
+  id       Int             @id @default(autoincrement())
+  name     String          @unique
+  slug     String          @unique
+  profiles ArtistProfile[]
+}
+
+enum CommissionStatus {
+  PENDING
+  REVIEWED
+  ACCEPTED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+
+model CommissionRequest {
+  id              Int              @id @default(autoincrement())
+  artistProfileId Int
+  clientName      String
+  clientEmail     String
+  message         String           @db.Text
+  budget          String?
+  artistNote      String?          @db.Text
+  artistResponse  String?          @db.Text
+  quotedPrice     String?
+  status          CommissionStatus @default(PENDING)
+  artistProfile   ArtistProfile    @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  paymentTransactions PaymentTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum NotificationType {
+  COMMISSION_REQUEST
+  PORTFOLIO_LIKE
+  FOLLOW
+  MESSAGE
+}
+
+model Notification {
+  id              Int              @id @default(autoincrement())
+  userId          Int
+  type            NotificationType
+  title           String
+  message         String
+  isRead          Boolean          @default(false)
+  relatedEntityId Int?
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PaymentTransaction {
+  id                  Int             @id @default(autoincrement())
+  commissionRequestId Int
+  amount              String
+  currency            String          @default("USD")
+  status              PaymentStatus   @default(PENDING)
+  provider            String          @default("PAYPAL")
+  providerOrderId     String?
+  commissionRequest   CommissionRequest @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
