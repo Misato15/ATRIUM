@@ -99,6 +99,9 @@ model ArtistCategory {
 enum CommissionStatus {
   PENDING
   REVIEWED
+  PROPOSED
+  CLIENT_ACCEPTED
+  CLIENT_REJECTED
   ACCEPTED
   REJECTED
 }
@@ -121,6 +124,7 @@ model CommissionRequest {
   artistNote      String?          @db.Text
   artistResponse  String?          @db.Text
   quotedPrice     String?
+  rejectionReason String?          @db.Text
   status          CommissionStatus @default(PENDING)
   artistProfile   ArtistProfile    @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
   paymentTransactions PaymentTransaction[]

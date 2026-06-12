@@ -70,6 +70,9 @@ function getCommissionStatusLabel(status) {
   const labels = {
     PENDING: 'Pendiente',
     REVIEWED: 'En revision',
+    PROPOSED: 'Propuesta enviada',
+    CLIENT_ACCEPTED: 'Cliente acepto',
+    CLIENT_REJECTED: 'Cliente rechazo',
     ACCEPTED: 'Aceptada',
     REJECTED: 'Rechazada',
   }
@@ -82,6 +85,9 @@ function getCommissionStatusClassName(status) {
     ALL: 'border-violet-400/40 bg-violet-400/10 text-violet-200',
     PENDING: 'border-amber-400/40 bg-amber-400/10 text-amber-200',
     REVIEWED: 'border-sky-400/40 bg-sky-400/10 text-sky-200',
+    PROPOSED: 'border-indigo-400/40 bg-indigo-400/10 text-indigo-200',
+    CLIENT_ACCEPTED: 'border-lime-400/40 bg-lime-400/10 text-lime-200',
+    CLIENT_REJECTED: 'border-orange-400/40 bg-orange-400/10 text-orange-200',
     ACCEPTED: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200',
     REJECTED: 'border-red-400/40 bg-red-400/10 text-red-200',
   }
@@ -89,6 +95,27 @@ function getCommissionStatusClassName(status) {
   return (
     classNames[status] || 'border-zinc-700 bg-zinc-900 text-zinc-300'
   )
+}
+function getPaymentStatusLabel(status) {
+  const labels = {
+    PENDING: 'Pendiente',
+    PAID: 'Pagado',
+    FAILED: 'Fallido',
+    CANCELLED: 'Cancelado',
+  }
+
+  return labels[status] || status
+}
+
+function getPaymentStatusClassName(status) {
+  const classNames = {
+    PENDING: 'border-amber-400/40 bg-amber-400/10 text-amber-200',
+    PAID: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200',
+    FAILED: 'border-red-400/40 bg-red-400/10 text-red-200',
+    CANCELLED: 'border-zinc-600 bg-zinc-800 text-zinc-300',
+  }
+
+  return classNames[status] || 'border-zinc-700 bg-zinc-900 text-zinc-300'
 }
 
 function formatCommissionDate(dateValue) {
@@ -102,12 +129,29 @@ function formatCommissionDate(dateValue) {
   }).format(new Date(dateValue))
 }
 
+function normalizePaymentAmount(amount) {
+  const match = amount.match(/\d+(?:[.,]\d{1,2})?/)
+
+  if (!match) {
+    return null
+  }
+
+  const normalizedAmount = Number(match[0].replace(',', '.'))
+
+  if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+    return null
+  }
+
+  return normalizedAmount.toFixed(2)
+}
+
 function DashboardPage() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [metrics, setMetrics] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [commissionRequests, setCommissionRequests] = useState([])
+  const [paymentTransactions, setPaymentTransactions] = useState([])
   const [error, setError] = useState('')
   const [notificationsError, setNotificationsError] = useState('')
   const [commissionError, setCommissionError] = useState('')
@@ -128,10 +172,15 @@ function DashboardPage() {
   const [isSavingCommissionProposal, setIsSavingCommissionProposal] =
     useState(false)
   const [updatingCommissionId, setUpdatingCommissionId] = useState(null)
+  const [paymentError, setPaymentError] = useState('')
+  const [creatingPaymentCommissionId, setCreatingPaymentCommissionId] =
+    useState(null)
   const [commissionStatusFilter, setCommissionStatusFilter] = useState('ALL')
   const [selectedCommissionRequest, setSelectedCommissionRequest] =
     useState(null)
   const [commissionNoteDraft, setCommissionNoteDraft] = useState('')
+  const [commissionRejectionReason, setCommissionRejectionReason] =
+    useState('')
   const [commissionProposalFormData, setCommissionProposalFormData] = useState({
     artistResponse: '',
     quotedPrice: '',
@@ -226,6 +275,16 @@ function DashboardPage() {
           const commissionsData = await commissionsResponse.json()
           setCommissionRequests(commissionsData)
         }
+        const paymentsResponse = await fetch(`${API_URL}/payments/me`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
+
+if (paymentsResponse.ok) {
+  const paymentsData = await paymentsResponse.json()
+  setPaymentTransactions(paymentsData)
+}
       } catch {
         setError('No se pudo cargar tu dashboard')
       } finally {
@@ -270,11 +329,13 @@ function DashboardPage() {
   function openCommissionDetail(commissionRequest) {
     setCommissionNoteError('')
     setCommissionProposalError('')
+    setPaymentError('')
     setCommissionNoteDraft(commissionRequest.artistNote || '')
     setCommissionProposalFormData({
       artistResponse: commissionRequest.artistResponse || '',
       quotedPrice: commissionRequest.quotedPrice || '',
     })
+    setCommissionRejectionReason(commissionRequest.rejectionReason || '')
     setSelectedCommissionRequest(commissionRequest)
   }
 
@@ -337,12 +398,113 @@ function DashboardPage() {
     }
   }
 
+  async function handleCreatePendingPayment(commissionRequest) {
+    const token = getAuthToken()
+    setPaymentError('')
+    setCreatingPaymentCommissionId(commissionRequest.id)
+
+    try {
+      if (!commissionRequest.quotedPrice) {
+        throw new Error(
+          'La solicitud necesita una cotizacion antes de generar pago',
+        )
+      }
+
+      const paymentAmount = normalizePaymentAmount(commissionRequest.quotedPrice)
+
+      if (!paymentAmount) {
+        throw new Error('La cotizacion debe incluir un monto numerico')
+      }
+
+      let paymentTransaction = paymentTransactions.find(
+        (currentPaymentTransaction) =>
+          currentPaymentTransaction.commissionRequestId ===
+          commissionRequest.id,
+      )
+
+      if (!paymentTransaction) {
+        const response = await fetch(
+          `${API_URL}/payments/commissions/${commissionRequest.id}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              amount: paymentAmount,
+              currency: 'USD',
+            }),
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.message || 'No se pudo generar el pago')
+        }
+
+        paymentTransaction = await response.json()
+
+        setPaymentTransactions((currentTransactions) => [
+          paymentTransaction,
+          ...currentTransactions,
+        ])
+      }
+
+      if (paymentTransaction.providerOrderId) {
+        return
+      }
+
+      const paypalOrderResponse = await fetch(
+        `${API_URL}/payments/${paymentTransaction.id}/paypal-order`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      )
+
+      if (!paypalOrderResponse.ok) {
+        const errorData = await paypalOrderResponse.json()
+        throw new Error(errorData.message || 'No se pudo crear la orden PayPal')
+      }
+
+      const updatedPaymentTransaction = await paypalOrderResponse.json()
+
+      setPaymentTransactions((currentTransactions) => {
+        const alreadyExists = currentTransactions.some(
+          (paymentTransaction) =>
+            paymentTransaction.id === updatedPaymentTransaction.id,
+        )
+
+        if (alreadyExists) {
+          return currentTransactions.map((paymentTransaction) =>
+            paymentTransaction.id === updatedPaymentTransaction.id
+              ? updatedPaymentTransaction
+              : paymentTransaction,
+          )
+        }
+
+        return [updatedPaymentTransaction, ...currentTransactions]
+      })
+    } catch (error) {
+      setPaymentError(error.message)
+    } finally {
+      setCreatingPaymentCommissionId(null)
+    }
+  }
+
   async function handleUpdateCommissionStatus(commissionRequestId, status) {
     const token = getAuthToken()
     setCommissionError('')
     setUpdatingCommissionId(commissionRequestId)
 
     try {
+      if (status === 'REJECTED' && !commissionRejectionReason.trim()) {
+        throw new Error('Debes escribir un motivo de rechazo')
+      }
+
       const response = await fetch(
         `${API_URL}/commissions/${commissionRequestId}/status`,
         {
@@ -351,7 +513,11 @@ function DashboardPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({
+            status,
+            rejectionReason:
+              status === 'REJECTED' ? commissionRejectionReason : undefined,
+          }),
         },
       )
 
@@ -481,24 +647,7 @@ function DashboardPage() {
         )
       }
 
-      const statusResponse = await fetch(
-        `${API_URL}/commissions/${selectedCommissionRequest.id}/status`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status: 'ACCEPTED' }),
-        },
-      )
-
-      if (!statusResponse.ok) {
-        const errorData = await statusResponse.json()
-        throw new Error(errorData.message || 'No se pudo aceptar la solicitud')
-      }
-
-      const updatedCommissionRequest = await statusResponse.json()
+      const updatedCommissionRequest = await proposalResponse.json()
 
       setCommissionRequests((currentRequests) =>
         currentRequests.map((commissionRequest) =>
@@ -519,6 +668,14 @@ function DashboardPage() {
       setIsSavingCommissionProposal(false)
       setUpdatingCommissionId(null)
     }
+  }
+
+  async function handleConfirmCommissionRequest() {
+    if (!selectedCommissionRequest) {
+      return
+    }
+
+    await handleUpdateCommissionStatus(selectedCommissionRequest.id, 'ACCEPTED')
   }
 
   async function handleProfileImageUpload(event) {
@@ -714,6 +871,15 @@ function DashboardPage() {
   const reviewedCommissions = commissionRequests.filter(
     (commissionRequest) => commissionRequest.status === 'REVIEWED',
   )
+  const proposedCommissions = commissionRequests.filter(
+    (commissionRequest) => commissionRequest.status === 'PROPOSED',
+  )
+  const clientAcceptedCommissions = commissionRequests.filter(
+    (commissionRequest) => commissionRequest.status === 'CLIENT_ACCEPTED',
+  )
+  const clientRejectedCommissions = commissionRequests.filter(
+    (commissionRequest) => commissionRequest.status === 'CLIENT_REJECTED',
+  )
   const acceptedCommissions = commissionRequests.filter(
     (commissionRequest) => commissionRequest.status === 'ACCEPTED',
   )
@@ -744,6 +910,21 @@ function DashboardPage() {
       count: reviewedCommissions.length,
     },
     {
+      value: 'PROPOSED',
+      label: 'Propuestas',
+      count: proposedCommissions.length,
+    },
+    {
+      value: 'CLIENT_ACCEPTED',
+      label: 'Cliente acepto',
+      count: clientAcceptedCommissions.length,
+    },
+    {
+      value: 'CLIENT_REJECTED',
+      label: 'Cliente rechazo',
+      count: clientRejectedCommissions.length,
+    },
+    {
       value: 'ACCEPTED',
       label: 'Aceptadas',
       count: acceptedCommissions.length,
@@ -757,6 +938,20 @@ function DashboardPage() {
   const unreadNotificationCount = notifications.filter(
     (notification) => !notification.isRead,
   ).length
+  const selectedCommissionPayment = selectedCommissionRequest
+    ? paymentTransactions.find(
+        (paymentTransaction) =>
+          paymentTransaction.commissionRequestId ===
+          selectedCommissionRequest.id,
+      )
+    : null
+  const canCreateSelectedCommissionPayment =
+    selectedCommissionRequest?.status === 'ACCEPTED' &&
+    selectedCommissionRequest?.quotedPrice &&
+    !selectedCommissionPayment?.providerOrderId
+  const selectedPaymentCheckoutUrl = selectedCommissionPayment?.providerOrderId
+    ? `${window.location.origin}/payments/checkout/${selectedCommissionPayment.providerOrderId}`
+    : ''
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-8 text-white">
@@ -963,6 +1158,86 @@ function DashboardPage() {
               </section>
             )}
 
+            <section className="mt-8">
+  <div>
+    <p className="text-sm font-semibold uppercase tracking-wide text-violet-400">
+      Pagos
+    </p>
+    <h2 className="mt-2 text-2xl font-bold text-white">
+      Pagos y transacciones
+    </h2>
+    <p className="mt-2 text-sm text-zinc-400">
+      Seguimiento de pagos generados desde solicitudes de comision.
+    </p>
+  </div>
+
+  {paymentTransactions.length === 0 ? (
+    <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+      <p className="text-sm text-zinc-400">
+        Todavia no hay transacciones de pago registradas.
+      </p>
+    </div>
+  ) : (
+    <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      {paymentTransactions.map((paymentTransaction) => (
+        <article
+          key={paymentTransaction.id}
+          className="rounded-lg border border-zinc-800 bg-zinc-900 p-5"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-zinc-400">Cliente</p>
+              <h3 className="mt-1 text-lg font-bold text-white">
+                {paymentTransaction.commissionRequest?.clientName ||
+                  'Cliente sin nombre'}
+              </h3>
+            </div>
+
+            <span
+              className={`rounded-md border px-3 py-1 text-xs font-semibold ${getPaymentStatusClassName(
+                paymentTransaction.status,
+              )}`}
+            >
+              {getPaymentStatusLabel(paymentTransaction.status)}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase text-zinc-500">Monto</p>
+              <p className="mt-1 font-semibold text-white">
+                {paymentTransaction.amount} {paymentTransaction.currency}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs uppercase text-zinc-500">Proveedor</p>
+              <p className="mt-1 font-semibold text-white">
+                {paymentTransaction.provider}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs uppercase text-zinc-500">Comision</p>
+              <p className="mt-1 font-semibold text-white">
+                {getCommissionStatusLabel(
+                  paymentTransaction.commissionRequest?.status,
+                )}
+              </p>
+            </div>
+          </div>
+
+          {paymentTransaction.commissionRequest?.artistResponse && (
+            <p className="mt-4 text-sm leading-6 text-zinc-300">
+              {paymentTransaction.commissionRequest.artistResponse}
+            </p>
+          )}
+        </article>
+      ))}
+    </div>
+  )}
+</section>
+
             <section className="mt-10">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -1104,7 +1379,7 @@ function DashboardPage() {
                           type="button"
                           disabled={
                             updatingCommissionId === commissionRequest.id ||
-                            commissionRequest.status === 'REVIEWED'
+                            commissionRequest.status !== 'PENDING'
                           }
                           onClick={() =>
                             handleUpdateCommissionStatus(
@@ -1121,7 +1396,7 @@ function DashboardPage() {
                           type="button"
                           disabled={
                             updatingCommissionId === commissionRequest.id ||
-                            commissionRequest.status === 'ACCEPTED'
+                            commissionRequest.status !== 'CLIENT_ACCEPTED'
                           }
                           onClick={() =>
                             handleUpdateCommissionStatus(
@@ -1131,24 +1406,15 @@ function DashboardPage() {
                           }
                           className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Aceptar
+                          Confirmar
                         </button>
 
                         <button
                           type="button"
-                          disabled={
-                            updatingCommissionId === commissionRequest.id ||
-                            commissionRequest.status === 'REJECTED'
-                          }
-                          onClick={() =>
-                            handleUpdateCommissionStatus(
-                              commissionRequest.id,
-                              'REJECTED',
-                            )
-                          }
+                          onClick={() => openCommissionDetail(commissionRequest)}
                           className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-red-400 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Rechazar
+                          Gestionar
                         </button>
                       </div>
                     </article>
@@ -1606,7 +1872,7 @@ function DashboardPage() {
                     Respuesta y cotizacion
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">
-                    Esta propuesta se guardara cuando aceptes la solicitud.
+                    Esta propuesta se enviara al cliente para que pueda aceptarla o rechazarla.
                   </p>
                 </div>
               </div>
@@ -1665,12 +1931,134 @@ function DashboardPage() {
               </div>
             </div>
 
+            <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-400">
+                Motivo de rechazo
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Este mensaje se enviara al cliente si decides rechazar la solicitud.
+              </p>
+              <textarea
+                value={commissionRejectionReason}
+                onChange={(event) =>
+                  setCommissionRejectionReason(event.target.value)
+                }
+                rows="3"
+                placeholder="Ejemplo: No puedo tomar esta solicitud por disponibilidad o alcance del proyecto."
+                className="mt-4 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-red-400"
+              />
+            </div>
+
+            {selectedCommissionRequest.status === 'ACCEPTED' && (
+              <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-400">
+                      Pago
+                    </p>
+                    <h3 className="mt-2 text-lg font-bold text-white">
+                      Transaccion de la comision
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-zinc-500">
+                      Crea el pago pendiente para conectarlo luego con PayPal.
+                    </p>
+                  </div>
+
+                  {selectedCommissionPayment && (
+                    <span
+                      className={`rounded-md border px-3 py-2 text-xs font-semibold ${getPaymentStatusClassName(
+                        selectedCommissionPayment.status,
+                      )}`}
+                    >
+                      {getPaymentStatusLabel(selectedCommissionPayment.status)}
+                    </span>
+                  )}
+                </div>
+
+                {selectedCommissionPayment && (
+                  <div className="mt-4 grid gap-3 rounded-md border border-zinc-800 bg-zinc-900 p-3 sm:grid-cols-4">
+                    <div>
+                      <p className="text-xs uppercase text-zinc-500">Monto</p>
+                      <p className="mt-1 font-semibold text-white">
+                        {selectedCommissionPayment.amount}{' '}
+                        {selectedCommissionPayment.currency}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase text-zinc-500">
+                        Proveedor
+                      </p>
+                      <p className="mt-1 font-semibold text-white">
+                        {selectedCommissionPayment.provider}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase text-zinc-500">Estado</p>
+                      <p className="mt-1 font-semibold text-white">
+                        {getPaymentStatusLabel(selectedCommissionPayment.status)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase text-zinc-500">
+                        Orden PayPal
+                      </p>
+                      <p className="mt-1 break-all font-semibold text-white">
+                        {selectedCommissionPayment.providerOrderId ||
+                          'No generada'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {selectedPaymentCheckoutUrl && (
+                  <div className="mt-4 rounded-md border border-violet-400/30 bg-violet-400/10 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">
+                      Enlace de pago para el cliente
+                    </p>
+                    <a
+                      href={selectedPaymentCheckoutUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 block break-all text-sm font-semibold text-violet-200 hover:text-violet-100"
+                    >
+                      {selectedPaymentCheckoutUrl}
+                    </a>
+                  </div>
+                )}
+
+                {canCreateSelectedCommissionPayment && (
+                  <button
+                    type="button"
+                    disabled={
+                      creatingPaymentCommissionId === selectedCommissionRequest.id
+                    }
+                    onClick={() =>
+                      handleCreatePendingPayment(selectedCommissionRequest)
+                    }
+                    className="mt-4 rounded-md bg-violet-400 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {creatingPaymentCommissionId === selectedCommissionRequest.id
+                      ? 'Generando pago...'
+                      : selectedCommissionPayment
+                        ? 'Generar orden PayPal'
+                        : 'Generar pago pendiente'}
+                  </button>
+                )}
+
+                {paymentError && (
+                  <p className="mt-3 text-sm text-red-400">{paymentError}</p>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
                 type="button"
                 disabled={
                   updatingCommissionId === selectedCommissionRequest.id ||
-                  selectedCommissionRequest.status === 'REVIEWED'
+                  selectedCommissionRequest.status !== 'PENDING'
                 }
                 onClick={() =>
                   handleUpdateCommissionStatus(
@@ -1687,13 +2075,28 @@ function DashboardPage() {
                 type="button"
                 disabled={
                   updatingCommissionId === selectedCommissionRequest.id ||
+                  selectedCommissionRequest.status === 'REJECTED' ||
                   selectedCommissionRequest.status === 'ACCEPTED' ||
                   isSavingCommissionProposal
                 }
                 onClick={handleAcceptCommissionRequest}
                 className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSavingCommissionProposal ? 'Aceptando...' : 'Aceptar'}
+                {isSavingCommissionProposal
+                  ? 'Enviando...'
+                  : 'Enviar propuesta'}
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  updatingCommissionId === selectedCommissionRequest.id ||
+                  selectedCommissionRequest.status !== 'CLIENT_ACCEPTED'
+                }
+                onClick={handleConfirmCommissionRequest}
+                className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Confirmar comision
               </button>
 
               <button

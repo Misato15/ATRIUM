@@ -8,6 +8,7 @@ import { ArtistCategoriesModule } from './artist-categories/artist-categories.mo
 import { UploadsModule } from './uploads/uploads.module';
 import { CommissionsModule } from './commissions/commissions.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     UploadsModule,
     CommissionsModule,
     NotificationsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

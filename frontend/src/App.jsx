@@ -5,6 +5,8 @@ import RegisterPage from './pages/RegisterPage'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import PortfolioDetailPage from './pages/PortfolioDetailPage'
+import PaymentCheckoutPage from './pages/PaymentCheckoutPage'
+import CommissionProposalPage from './pages/CommissionProposalPage'
 import Navbar from './components/Navbar'
 
 function App() {
@@ -18,6 +20,8 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/portfolio/:id" element={<PortfolioDetailPage />} />
+        <Route path="/commissions/proposals/:id" element={<CommissionProposalPage />} />
+        <Route path="/payments/checkout/:providerOrderId" element={<PaymentCheckoutPage />} />
       </Routes>
     </BrowserRouter>
   )

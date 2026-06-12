@@ -46,6 +46,7 @@ export type CommissionRequestMinAggregateOutputType = {
   artistNote: string | null
   artistResponse: string | null
   quotedPrice: string | null
+  rejectionReason: string | null
   status: $Enums.CommissionStatus | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -61,6 +62,7 @@ export type CommissionRequestMaxAggregateOutputType = {
   artistNote: string | null
   artistResponse: string | null
   quotedPrice: string | null
+  rejectionReason: string | null
   status: $Enums.CommissionStatus | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -76,6 +78,7 @@ export type CommissionRequestCountAggregateOutputType = {
   artistNote: number
   artistResponse: number
   quotedPrice: number
+  rejectionReason: number
   status: number
   createdAt: number
   updatedAt: number
@@ -103,6 +106,7 @@ export type CommissionRequestMinAggregateInputType = {
   artistNote?: true
   artistResponse?: true
   quotedPrice?: true
+  rejectionReason?: true
   status?: true
   createdAt?: true
   updatedAt?: true
@@ -118,6 +122,7 @@ export type CommissionRequestMaxAggregateInputType = {
   artistNote?: true
   artistResponse?: true
   quotedPrice?: true
+  rejectionReason?: true
   status?: true
   createdAt?: true
   updatedAt?: true
@@ -133,6 +138,7 @@ export type CommissionRequestCountAggregateInputType = {
   artistNote?: true
   artistResponse?: true
   quotedPrice?: true
+  rejectionReason?: true
   status?: true
   createdAt?: true
   updatedAt?: true
@@ -235,6 +241,7 @@ export type CommissionRequestGroupByOutputType = {
   artistNote: string | null
   artistResponse: string | null
   quotedPrice: string | null
+  rejectionReason: string | null
   status: $Enums.CommissionStatus
   createdAt: Date
   updatedAt: Date
@@ -273,6 +280,7 @@ export type CommissionRequestWhereInput = {
   artistNote?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   artistResponse?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   quotedPrice?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
+  rejectionReason?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   status?: Prisma.EnumCommissionStatusFilter<"CommissionRequest"> | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFilter<"CommissionRequest"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"CommissionRequest"> | Date | string
@@ -290,6 +298,7 @@ export type CommissionRequestOrderByWithRelationInput = {
   artistNote?: Prisma.SortOrderInput | Prisma.SortOrder
   artistResponse?: Prisma.SortOrderInput | Prisma.SortOrder
   quotedPrice?: Prisma.SortOrderInput | Prisma.SortOrder
+  rejectionReason?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -311,6 +320,7 @@ export type CommissionRequestWhereUniqueInput = Prisma.AtLeast<{
   artistNote?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   artistResponse?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   quotedPrice?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
+  rejectionReason?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   status?: Prisma.EnumCommissionStatusFilter<"CommissionRequest"> | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFilter<"CommissionRequest"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"CommissionRequest"> | Date | string
@@ -328,6 +338,7 @@ export type CommissionRequestOrderByWithAggregationInput = {
   artistNote?: Prisma.SortOrderInput | Prisma.SortOrder
   artistResponse?: Prisma.SortOrderInput | Prisma.SortOrder
   quotedPrice?: Prisma.SortOrderInput | Prisma.SortOrder
+  rejectionReason?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -351,6 +362,7 @@ export type CommissionRequestScalarWhereWithAggregatesInput = {
   artistNote?: Prisma.StringNullableWithAggregatesFilter<"CommissionRequest"> | string | null
   artistResponse?: Prisma.StringNullableWithAggregatesFilter<"CommissionRequest"> | string | null
   quotedPrice?: Prisma.StringNullableWithAggregatesFilter<"CommissionRequest"> | string | null
+  rejectionReason?: Prisma.StringNullableWithAggregatesFilter<"CommissionRequest"> | string | null
   status?: Prisma.EnumCommissionStatusWithAggregatesFilter<"CommissionRequest"> | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"CommissionRequest"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"CommissionRequest"> | Date | string
@@ -364,6 +376,7 @@ export type CommissionRequestCreateInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -381,6 +394,7 @@ export type CommissionRequestUncheckedCreateInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -395,6 +409,7 @@ export type CommissionRequestUpdateInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -412,6 +427,7 @@ export type CommissionRequestUncheckedUpdateInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -428,6 +444,7 @@ export type CommissionRequestCreateManyInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -441,6 +458,7 @@ export type CommissionRequestUpdateManyMutationInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -456,6 +474,7 @@ export type CommissionRequestUncheckedUpdateManyInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -487,6 +506,7 @@ export type CommissionRequestCountOrderByAggregateInput = {
   artistNote?: Prisma.SortOrder
   artistResponse?: Prisma.SortOrder
   quotedPrice?: Prisma.SortOrder
+  rejectionReason?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -507,6 +527,7 @@ export type CommissionRequestMaxOrderByAggregateInput = {
   artistNote?: Prisma.SortOrder
   artistResponse?: Prisma.SortOrder
   quotedPrice?: Prisma.SortOrder
+  rejectionReason?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -522,6 +543,7 @@ export type CommissionRequestMinOrderByAggregateInput = {
   artistNote?: Prisma.SortOrder
   artistResponse?: Prisma.SortOrder
   quotedPrice?: Prisma.SortOrder
+  rejectionReason?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -605,6 +627,7 @@ export type CommissionRequestCreateWithoutArtistProfileInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -620,6 +643,7 @@ export type CommissionRequestUncheckedCreateWithoutArtistProfileInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -665,6 +689,7 @@ export type CommissionRequestScalarWhereInput = {
   artistNote?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   artistResponse?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   quotedPrice?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
+  rejectionReason?: Prisma.StringNullableFilter<"CommissionRequest"> | string | null
   status?: Prisma.EnumCommissionStatusFilter<"CommissionRequest"> | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFilter<"CommissionRequest"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"CommissionRequest"> | Date | string
@@ -678,6 +703,7 @@ export type CommissionRequestCreateWithoutPaymentTransactionsInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -694,6 +720,7 @@ export type CommissionRequestUncheckedCreateWithoutPaymentTransactionsInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -723,6 +750,7 @@ export type CommissionRequestUpdateWithoutPaymentTransactionsInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -739,6 +767,7 @@ export type CommissionRequestUncheckedUpdateWithoutPaymentTransactionsInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -753,6 +782,7 @@ export type CommissionRequestCreateManyArtistProfileInput = {
   artistNote?: string | null
   artistResponse?: string | null
   quotedPrice?: string | null
+  rejectionReason?: string | null
   status?: $Enums.CommissionStatus
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -766,6 +796,7 @@ export type CommissionRequestUpdateWithoutArtistProfileInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -781,6 +812,7 @@ export type CommissionRequestUncheckedUpdateWithoutArtistProfileInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -796,6 +828,7 @@ export type CommissionRequestUncheckedUpdateManyWithoutArtistProfileInput = {
   artistNote?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   artistResponse?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   quotedPrice?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumCommissionStatusFieldUpdateOperationsInput | $Enums.CommissionStatus
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -842,6 +875,7 @@ export type CommissionRequestSelect<ExtArgs extends runtime.Types.Extensions.Int
   artistNote?: boolean
   artistResponse?: boolean
   quotedPrice?: boolean
+  rejectionReason?: boolean
   status?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -862,12 +896,13 @@ export type CommissionRequestSelectScalar = {
   artistNote?: boolean
   artistResponse?: boolean
   quotedPrice?: boolean
+  rejectionReason?: boolean
   status?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type CommissionRequestOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "artistProfileId" | "clientName" | "clientEmail" | "message" | "budget" | "artistNote" | "artistResponse" | "quotedPrice" | "status" | "createdAt" | "updatedAt", ExtArgs["result"]["commissionRequest"]>
+export type CommissionRequestOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "artistProfileId" | "clientName" | "clientEmail" | "message" | "budget" | "artistNote" | "artistResponse" | "quotedPrice" | "rejectionReason" | "status" | "createdAt" | "updatedAt", ExtArgs["result"]["commissionRequest"]>
 export type CommissionRequestInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   artistProfile?: boolean | Prisma.ArtistProfileDefaultArgs<ExtArgs>
   paymentTransactions?: boolean | Prisma.CommissionRequest$paymentTransactionsArgs<ExtArgs>
@@ -890,6 +925,7 @@ export type $CommissionRequestPayload<ExtArgs extends runtime.Types.Extensions.I
     artistNote: string | null
     artistResponse: string | null
     quotedPrice: string | null
+    rejectionReason: string | null
     status: $Enums.CommissionStatus
     createdAt: Date
     updatedAt: Date
@@ -1273,6 +1309,7 @@ export interface CommissionRequestFieldRefs {
   readonly artistNote: Prisma.FieldRef<"CommissionRequest", 'String'>
   readonly artistResponse: Prisma.FieldRef<"CommissionRequest", 'String'>
   readonly quotedPrice: Prisma.FieldRef<"CommissionRequest", 'String'>
+  readonly rejectionReason: Prisma.FieldRef<"CommissionRequest", 'String'>
   readonly status: Prisma.FieldRef<"CommissionRequest", 'CommissionStatus'>
   readonly createdAt: Prisma.FieldRef<"CommissionRequest", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"CommissionRequest", 'DateTime'>

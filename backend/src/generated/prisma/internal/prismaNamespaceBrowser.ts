@@ -152,6 +152,7 @@ export const CommissionRequestScalarFieldEnum = {
   artistNote: 'artistNote',
   artistResponse: 'artistResponse',
   quotedPrice: 'quotedPrice',
+  rejectionReason: 'rejectionReason',
   status: 'status',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -251,7 +252,8 @@ export const CommissionRequestOrderByRelevanceFieldEnum = {
   budget: 'budget',
   artistNote: 'artistNote',
   artistResponse: 'artistResponse',
-  quotedPrice: 'quotedPrice'
+  quotedPrice: 'quotedPrice',
+  rejectionReason: 'rejectionReason'
 } as const
 
 export type CommissionRequestOrderByRelevanceFieldEnum = (typeof CommissionRequestOrderByRelevanceFieldEnum)[keyof typeof CommissionRequestOrderByRelevanceFieldEnum]

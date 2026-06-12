@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CommissionsService } from './commissions.service';
+import { ClientCommissionResponseDto } from './dto/client-commission-response.dto';
 import { CreateCommissionRequestDto } from './dto/create-commission-request.dto';
 import { UpdateCommissionNoteDto } from './dto/update-commission-note.dto';
 import { UpdateCommissionProposalDto } from './dto/update-commission-proposal.dto';
@@ -36,6 +37,22 @@ export class CommissionsController {
     return this.commissionsService.findMine(request.user.userId);
   }
 
+  @Get('proposals/:id')
+  findProposal(@Param('id') id: string) {
+    return this.commissionsService.findProposal(Number(id));
+  }
+
+  @Patch('proposals/:id/response')
+  respondToProposal(
+    @Param('id') id: string,
+    @Body() clientCommissionResponseDto: ClientCommissionResponseDto,
+  ) {
+    return this.commissionsService.respondToProposal(
+      Number(id),
+      clientCommissionResponseDto.decision,
+    );
+  }
+
   @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
   updateMineStatus(
@@ -47,6 +64,7 @@ export class CommissionsController {
       request.user.userId,
       Number(id),
       updateCommissionStatusDto.status,
+      updateCommissionStatusDto.rejectionReason,
     );
   }
 

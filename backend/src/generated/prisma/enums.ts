@@ -31,6 +31,9 @@ export type MediaType = (typeof MediaType)[keyof typeof MediaType]
 export const CommissionStatus = {
   PENDING: 'PENDING',
   REVIEWED: 'REVIEWED',
+  PROPOSED: 'PROPOSED',
+  CLIENT_ACCEPTED: 'CLIENT_ACCEPTED',
+  CLIENT_REJECTED: 'CLIENT_REJECTED',
   ACCEPTED: 'ACCEPTED',
   REJECTED: 'REJECTED'
 } as const
