@@ -1,10 +1,15 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { isAuthenticated, removeAuthToken } from '../utils/auth'
+import {
+  getAuthUser,
+  isAuthenticated,
+  removeAuthToken,
+} from '../utils/auth'
 import Button from './Button'
 
 function Navbar() {
   const navigate = useNavigate()
   const loggedIn = isAuthenticated()
+  const authUser = getAuthUser()
 
   function handleLogout() {
     removeAuthToken()
@@ -22,11 +27,48 @@ function Navbar() {
           {loggedIn ? (
             <>
               <Link
+                to="/"
+                className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+              >
+                Explorar
+              </Link>
+
+              <Link
+                to="/jobs"
+                className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+              >
+                Ofertas
+              </Link>
+
+              <Link
+                to="/marketplace"
+                className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+              >
+                Marketplace
+              </Link>
+
+              <Link
+                to="/client/dashboard"
+                className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+              >
+                Mis solicitudes
+              </Link>
+
+              <Link
                 to="/dashboard"
                 className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
               >
-                Mi perfil
+                {authUser?.profile ? 'Mi perfil' : 'Crear perfil'}
               </Link>
+
+              {authUser?.role === 'ADMIN' && (
+                <Link
+                  to="/admin"
+                  className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+                >
+                  Admin
+                </Link>
+              )}
 
               <Button variant="secondary" onClick={handleLogout}>
                 Cerrar sesion
@@ -39,6 +81,20 @@ function Navbar() {
                 className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
               >
                 Iniciar sesion
+              </Link>
+
+              <Link
+                to="/jobs"
+                className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+              >
+                Ofertas
+              </Link>
+
+              <Link
+                to="/marketplace"
+                className="text-sm font-semibold text-zinc-300 hover:text-violet-400"
+              >
+                Marketplace
               </Link>
 
               <Link

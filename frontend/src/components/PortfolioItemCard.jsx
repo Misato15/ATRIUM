@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom'
 const mediaTypeLabels = {
   IMAGE: 'Imagen',
   VIDEO: 'Video',
-  AUDIO: 'Audio',
-  EMBED: 'Embed',
+  PDF: 'PDF',
 }
 
 function PortfolioItemCard({
@@ -14,11 +13,16 @@ function PortfolioItemCard({
   mediaType,
   mediaUrl,
   thumbnailUrl,
+  assets = [],
   artistName,
   viewCount = 0,
   likeCount = 0,
 }) {
-  const imageUrl = thumbnailUrl || mediaUrl
+  const previewAsset = assets.find((asset) => asset.thumbnailUrl) || assets[0]
+  const imageUrl =
+    thumbnailUrl ||
+    previewAsset?.thumbnailUrl ||
+    (mediaType === 'IMAGE' ? mediaUrl || previewAsset?.url : '')
 
   return (
     <Link
@@ -32,7 +36,9 @@ function PortfolioItemCard({
           className="h-32 w-full object-cover"
         />
       ) : (
-        <div className="h-32 bg-zinc-800" />
+        <div className="flex h-32 items-center justify-center bg-zinc-800 text-sm font-semibold text-zinc-400">
+          {mediaTypeLabels[mediaType] ?? mediaType}
+        </div>
       )}
 
       <div className="p-5">

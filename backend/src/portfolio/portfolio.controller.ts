@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Patch,
   Param,
   Post,
   Req,
@@ -61,5 +63,28 @@ export class PortfolioController {
       request.user.userId,
       createPortfolioItemDto,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id')
+  updateMine(
+    @Param('id') id: string,
+    @Req() request: { user: { userId: number } },
+    @Body() createPortfolioItemDto: CreatePortfolioItemDto,
+  ) {
+    return this.portfolioService.updateForUser(
+      Number(id),
+      request.user.userId,
+      createPortfolioItemDto,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  removeMine(
+    @Param('id') id: string,
+    @Req() request: { user: { userId: number } },
+  ) {
+    return this.portfolioService.removeForUser(Number(id), request.user.userId);
   }
 }

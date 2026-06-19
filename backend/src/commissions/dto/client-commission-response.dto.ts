@@ -1,3 +1,4 @@
 export class ClientCommissionResponseDto {
-  decision!: 'ACCEPT' | 'REJECT';
+  decision!: 'ACCEPT' | 'REJECT' | 'REQUEST_REVISION';
+  revisionRequest?: string;
 }

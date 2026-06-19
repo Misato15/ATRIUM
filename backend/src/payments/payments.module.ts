@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../mail/mail.module';
+import { PayPalModule } from '../paypal/paypal.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
 @Module({
-  imports: [PrismaModule, MailModule],
+  imports: [PrismaModule, MailModule, PayPalModule],
   controllers: [PaymentsController],
   providers: [PaymentsService],
 })

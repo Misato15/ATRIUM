@@ -8,6 +8,65 @@ function getArtistDisplayName(artist) {
   return artist?.artistName || artist?.fullName || 'Artista sin nombre'
 }
 
+const mediaTypeLabels = {
+  IMAGE: 'Imagen',
+  VIDEO: 'Video',
+  PDF: 'PDF',
+}
+
+function PortfolioAssetView({ asset, title }) {
+  if (asset.mediaType === 'IMAGE') {
+    return (
+      <img
+        src={asset.url}
+        alt={asset.name || title}
+        className="max-h-[720px] w-full object-contain bg-zinc-950"
+      />
+    )
+  }
+
+  if (asset.mediaType === 'VIDEO') {
+    return (
+      <video
+        src={asset.url}
+        controls
+        className="max-h-[720px] w-full bg-zinc-950"
+      />
+    )
+  }
+
+  if (asset.mediaType === 'PDF') {
+    return (
+      <div className="bg-zinc-950">
+        <iframe
+          src={asset.url}
+          title={asset.name || title}
+          className="h-[720px] w-full"
+        />
+        <a
+          href={asset.url}
+          target="_blank"
+          rel="noreferrer"
+          className="block border-t border-zinc-800 px-4 py-3 text-sm font-semibold text-violet-300 hover:text-violet-200"
+        >
+          Abrir PDF
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <a
+      href={asset.url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex min-h-[220px] items-center justify-center bg-zinc-950 text-sm font-semibold text-violet-300"
+    >
+      Abrir archivo
+    </a>
+  )
+}
+
 function PortfolioDetailPage() {
   const { id } = useParams()
   const [portfolioItem, setPortfolioItem] = useState(null)
@@ -149,7 +208,16 @@ function PortfolioDetailPage() {
 
   const artist = portfolioItem.artistProfile
   const artistName = getArtistDisplayName(artist)
-  const imageUrl = portfolioItem.thumbnailUrl || portfolioItem.mediaUrl
+  const assets =
+    portfolioItem.assets?.length > 0
+      ? portfolioItem.assets
+      : [
+          {
+            mediaType: portfolioItem.mediaType,
+            url: portfolioItem.mediaUrl,
+            thumbnailUrl: portfolioItem.thumbnailUrl,
+          },
+        ]
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-10 text-white">
@@ -159,22 +227,26 @@ function PortfolioDetailPage() {
         </Link>
 
         <div className="mt-8 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
-          {portfolioItem.mediaType === 'IMAGE' && imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={portfolioItem.title}
-              className="max-h-[720px] w-full object-contain bg-zinc-950"
-            />
-          ) : (
-            <div className="flex min-h-[360px] items-center justify-center bg-zinc-950 text-zinc-400">
-              Vista previa no disponible para este tipo de medio.
+          <div className="grid gap-px bg-zinc-800">
+            {assets.map((asset, index) => (
+              <PortfolioAssetView
+                key={`${asset.url}-${index}`}
+                asset={asset}
+                title={portfolioItem.title}
+              />
+            ))}
+          </div>
+
+          {assets.length > 1 && (
+            <div className="border-t border-zinc-800 px-6 py-3 text-sm text-zinc-400">
+              {assets.length} archivos en esta publicacion
             </div>
           )}
 
           <div className="grid gap-8 p-6 lg:grid-cols-[1fr_280px]">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-violet-400">
-                {portfolioItem.mediaType}
+                {mediaTypeLabels[portfolioItem.mediaType] ?? portfolioItem.mediaType}
               </p>
 
               <h1 className="mt-3 text-4xl font-bold">

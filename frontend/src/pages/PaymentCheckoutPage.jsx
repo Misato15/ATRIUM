@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { PayPalButtons } from '@paypal/react-paypal-js'
+import {
+  PayPalButtons,
+  PayPalScriptProvider,
+  usePayPalScriptReducer,
+} from '@paypal/react-paypal-js'
 import { API_URL } from '../config/api'
 
 function getArtistDisplayName(profile) {
@@ -20,6 +24,8 @@ function getPaymentStatusLabel(status) {
 
 function PaymentCheckoutPage() {
   const { providerOrderId } = useParams()
+  const [{ isPending: isPayPalLoading, isRejected: isPayPalRejected }] =
+    usePayPalScriptReducer()
   const [checkoutData, setCheckoutData] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -98,7 +104,7 @@ function PaymentCheckoutPage() {
   }
 
   const commissionRequest = checkoutData.commissionRequest
-  const artistProfile = commissionRequest.artistProfile
+  const artistProfile = commissionRequest.artistProfile || {}
   const artistName = getArtistDisplayName(artistProfile)
   const isPaid = checkoutData.status === 'PAID'
 
@@ -119,7 +125,7 @@ function PaymentCheckoutPage() {
               <p className="mt-2 text-zinc-400">
                 Solicitud de {commissionRequest.clientName}
               </p>
-              {artistProfile.location && (
+              {artistProfile?.location && (
                 <p className="mt-1 text-sm text-zinc-500">
                   {artistProfile.location}
                 </p>
@@ -154,7 +160,8 @@ function PaymentCheckoutPage() {
                 Pago confirmado correctamente.
               </p>
               <p className="mt-2 text-sm text-emerald-100/80">
-                El artista ya puede ver este pago como pagado en su dashboard.
+                El pago queda protegido en Atrium mientras el artista trabaja.
+                Se libera logicamente cuando apruebes la entrega final.
               </p>
             </div>
           ) : (
@@ -163,16 +170,45 @@ function PaymentCheckoutPage() {
                 Puedes pagar con PayPal o tarjeta si PayPal la habilita para tu
                 region.
               </p>
-              <PayPalButtons
-                style={{
-                  layout: 'vertical',
-                  color: 'gold',
-                  shape: 'rect',
-                  label: 'paypal',
-                }}
-                createOrder={() => checkoutData.providerOrderId}
-                onApprove={(data) => handleCapturePayPalOrder(data.orderID)}
-              />
+
+              {!checkoutData.providerOrderId && (
+                <p className="rounded-md border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
+                  La orden de PayPal aun no esta generada.
+                </p>
+              )}
+
+              {isPayPalLoading && (
+                <p className="rounded-md border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-300">
+                  Cargando PayPal...
+                </p>
+              )}
+
+              {isPayPalRejected && (
+                <p className="rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">
+                  No se pudo cargar PayPal. Revisa el client id sandbox del frontend y reinicia Vite.
+                </p>
+              )}
+
+              {checkoutData.providerOrderId &&
+                !isPayPalLoading &&
+                !isPayPalRejected && (
+                  <PayPalButtons
+                    forceReRender={[checkoutData.providerOrderId]}
+                    style={{
+                      layout: 'vertical',
+                      color: 'gold',
+                      shape: 'rect',
+                      label: 'paypal',
+                    }}
+                    createOrder={() => checkoutData.providerOrderId}
+                    onApprove={(data) => handleCapturePayPalOrder(data.orderID)}
+                    onError={() =>
+                      setError(
+                        'PayPal no pudo abrir esta orden. Genera un nuevo enlace de pago.',
+                      )
+                    }
+                  />
+                )}
             </div>
           )}
 
@@ -187,4 +223,19 @@ function PaymentCheckoutPage() {
   )
 }
 
-export default PaymentCheckoutPage
+function PaymentCheckoutPageWithPayPal() {
+  return (
+    <PayPalScriptProvider
+      options={{
+        clientId: import.meta.env.VITE_PAYPAL_CLIENT_ID,
+        components: 'buttons',
+        currency: 'USD',
+        intent: 'capture',
+      }}
+    >
+      <PaymentCheckoutPage />
+    </PayPalScriptProvider>
+  )
+}
+
+export default PaymentCheckoutPageWithPayPal

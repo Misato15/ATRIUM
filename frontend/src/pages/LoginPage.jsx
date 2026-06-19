@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { saveAuthToken } from '../utils/auth'
+import { getPostLoginPathForUser, saveAuthSession } from '../utils/auth'
 import Button from '../components/Button'
 import { API_URL } from '../config/api'
 
@@ -41,9 +41,9 @@ function LoginPage() {
 
       const data = await response.json()
 
-     saveAuthToken(data.accessToken)
+      saveAuthSession(data.accessToken, data.user)
 
-      navigate('/dashboard')
+      navigate(getPostLoginPathForUser(data.user))
     } catch (error) {
       setError(error.message)
     } finally {

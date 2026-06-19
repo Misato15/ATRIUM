@@ -20,6 +20,11 @@ type SendBasicEmailInput = {
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly transporter = this.createTransporter();
+  private readonly resendApiKey = process.env.RESEND_API_KEY;
+  private readonly resendFrom =
+    process.env.RESEND_FROM ||
+    process.env.MAIL_FROM ||
+    'Atrium <onboarding@resend.dev>';
 
   private createTransporter() {
     const host = process.env.SMTP_HOST;
@@ -49,14 +54,21 @@ export class MailService {
   }
 
   isConfigured() {
-    return Boolean(this.transporter);
+    return Boolean(this.resendApiKey || this.transporter);
   }
 
   async verifyConnection() {
+    if (this.resendApiKey) {
+      return {
+        configured: true,
+        message: 'Resend configurado correctamente',
+      };
+    }
+
     if (!this.transporter) {
       return {
         configured: false,
-        message: 'SMTP no esta configurado',
+        message: 'Correo no configurado. Agrega RESEND_API_KEY.',
       };
     }
 
@@ -76,7 +88,7 @@ export class MailService {
         'Hola,',
         '',
         'Este es un correo de prueba de Atrium.',
-        'Si recibiste este mensaje, la configuracion SMTP esta funcionando.',
+        'Si recibiste este mensaje, la configuracion de correo esta funcionando.',
       ],
     });
 
@@ -86,10 +98,35 @@ export class MailService {
     };
   }
 
+  async sendEmailVerificationEmail(input: {
+    to: string;
+    name: string;
+    verificationUrl: string;
+  }) {
+    await this.sendBasicEmail({
+      to: input.to,
+      subject: 'Verifica tu correo en Atrium',
+      lines: [
+        `Hola ${input.name},`,
+        '',
+        'Confirma tu correo para activar tu cuenta de Atrium.',
+        '',
+        `Verificar correo: ${input.verificationUrl}`,
+        '',
+        'Este enlace vence en 24 horas.',
+      ],
+    });
+  }
+
   private async sendBasicEmail(input: SendBasicEmailInput): Promise<void> {
+    if (this.resendApiKey) {
+      await this.sendWithResend(input);
+      return;
+    }
+
     if (!this.transporter) {
       this.logger.log(
-        `Correo omitido para ${input.to}: SMTP no configurado. Asunto: ${input.subject}`,
+        `Correo omitido para ${input.to}: RESEND_API_KEY no configurado. Asunto: ${input.subject}`,
       );
       return;
     }
@@ -105,25 +142,39 @@ export class MailService {
     });
   }
 
+  private async sendWithResend(input: SendBasicEmailInput): Promise<void> {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: this.resendFrom,
+        to: [input.to],
+        subject: input.subject,
+        text: input.lines.join('\n'),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      this.logger.error(
+        `Resend no pudo enviar correo a ${input.to}. Status ${response.status}. ${errorBody}`,
+      );
+      throw new Error('Resend no pudo enviar el correo');
+    }
+  }
+
   async sendCommissionRequestEmail(
     input: SendCommissionRequestEmailInput,
   ): Promise<void> {
-    if (!this.transporter) {
-      this.logger.log(
-        `Correo de comision omitido para ${input.to}: SMTP no configurado.`,
-      );
-      return;
-    }
-
-    const from =
-      process.env.MAIL_FROM ?? process.env.SMTP_FROM ?? process.env.SMTP_USER;
     const subject = `Nueva solicitud de comision en Atrium`;
 
-    await this.transporter.sendMail({
-      from,
+    await this.sendBasicEmail({
       to: input.to,
       subject,
-      text: [
+      lines: [
         `Hola ${input.artistName},`,
         '',
         `${input.clientName} envio una nueva solicitud de comision desde Atrium.`,
@@ -135,7 +186,7 @@ export class MailService {
         input.message,
         '',
         'Entra a tu dashboard para revisar, aceptar o rechazar la solicitud.',
-      ].join('\n'),
+      ],
     });
   }
 
@@ -219,6 +270,108 @@ export class MailService {
         `Monto: ${input.amount} ${input.currency}`,
         '',
         `Puedes completar el pago aqui: ${input.paymentUrl}`,
+      ],
+    });
+  }
+
+  async sendCommissionDeliveryEmail(input: {
+    to: string;
+    clientName: string;
+    artistName: string;
+    deliveryMessage: string;
+    deliveryUrl?: string | null;
+    clientResponseDeadline?: Date | null;
+    reviewUrl: string;
+  }) {
+    await this.sendBasicEmail({
+      to: input.to,
+      subject: 'Tu comision esta lista para revision en Atrium',
+      lines: [
+        `Hola ${input.clientName},`,
+        '',
+        `${input.artistName} envio una entrega para tu comision.`,
+        '',
+        'Mensaje del artista:',
+        input.deliveryMessage,
+        '',
+        input.deliveryUrl
+          ? `Vista previa protegida: ${input.deliveryUrl}`
+          : 'El artista no adjunto una vista previa externa.',
+        input.clientResponseDeadline
+          ? `Fecha limite para responder: ${input.clientResponseDeadline.toLocaleString('es-HN')}`
+          : 'Responde desde Atrium para aprobar o pedir cambios.',
+        '',
+        `Revisa la entrega aqui: ${input.reviewUrl}`,
+        'El archivo final se habilita cuando la entrega sea aprobada.',
+      ],
+    });
+  }
+
+  async sendJobApplicationEmail(input: {
+    to: string;
+    clientName: string;
+    artistName: string;
+    jobTitle: string;
+    proposedPrice: string;
+    message: string;
+  }) {
+    await this.sendBasicEmail({
+      to: input.to,
+      subject: 'Nueva aplicacion a tu oferta en Atrium',
+      lines: [
+        `Hola ${input.clientName},`,
+        '',
+        `${input.artistName} aplico a tu oferta "${input.jobTitle}".`,
+        `Precio propuesto: ${input.proposedPrice}`,
+        '',
+        'Mensaje:',
+        input.message,
+        '',
+        'Entra a Atrium para revisar la propuesta.',
+      ],
+    });
+  }
+
+  async sendJobApplicationDecisionEmail(input: {
+    to: string;
+    artistName: string;
+    jobTitle: string;
+    decision: 'SHORTLISTED' | 'ACCEPTED' | 'REJECTED';
+  }) {
+    const labels = {
+      SHORTLISTED: 'preseleccionada',
+      ACCEPTED: 'aceptada',
+      REJECTED: 'rechazada',
+    };
+
+    await this.sendBasicEmail({
+      to: input.to,
+      subject: `Tu aplicacion fue ${labels[input.decision]} en Atrium`,
+      lines: [
+        `Hola ${input.artistName},`,
+        '',
+        `Tu aplicacion para "${input.jobTitle}" fue ${labels[input.decision]}.`,
+        '',
+        'Entra a Atrium para revisar el estado.',
+      ],
+    });
+  }
+
+  async sendJobApplicationWithdrawnEmail(input: {
+    to: string;
+    clientName: string;
+    artistName: string;
+    jobTitle: string;
+  }) {
+    await this.sendBasicEmail({
+      to: input.to,
+      subject: 'Una aplicacion fue retirada en Atrium',
+      lines: [
+        `Hola ${input.clientName},`,
+        '',
+        `${input.artistName} retiro su aplicacion para "${input.jobTitle}".`,
+        '',
+        'Entra a Atrium para revisar tus ofertas activas.',
       ],
     });
   }

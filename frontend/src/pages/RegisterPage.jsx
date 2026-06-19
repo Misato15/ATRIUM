@@ -1,7 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
 import { API_URL } from '../config/api'
+
+const INTEREST_OPTIONS = [
+  'Ilustracion',
+  'Musica',
+  'Fotografia',
+  'Danza',
+  'Pintura',
+  'Diseno grafico',
+  'Moda',
+  'Audiovisual',
+  'Escritura',
+  'Artes escenicas',
+]
 
 function RegisterPage() {
   const navigate = useNavigate()
@@ -10,30 +23,10 @@ function RegisterPage() {
     password: '',
     confirmPassword: '',
     fullName: '',
-    artistName: '',
-    category: '',
-    location: '',
+    interests: '',
   })
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [categories, setCategories] = useState([])
-  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
-
-  useEffect(() => {
-    async function loadCategories() {
-      try {
-        const response = await fetch(`${API_URL}/artist-categories`)
-        const data = await response.json()
-        setCategories(data)
-      } catch {
-        setError('No se pudieron cargar las categorias')
-      } finally {
-        setIsLoadingCategories(false)
-      }
-    }
-
-    loadCategories()
-  }, [])
 
   function handleChange(event) {
     setFormData({
@@ -57,9 +50,7 @@ function RegisterPage() {
       email: formData.email,
       password: formData.password,
       fullName: formData.fullName,
-      artistName: formData.artistName,
-      category: formData.category,
-      location: formData.location,
+      interests: formData.interests,
     }
 
     try {
@@ -76,7 +67,18 @@ function RegisterPage() {
         throw new Error(errorData.message || 'No se pudo crear la cuenta')
       }
 
-      navigate('/login')
+      const data = await response.json()
+
+      if (data.requiresEmailVerification) {
+        navigate(
+          `/verify-email?email=${encodeURIComponent(data.email || formData.email.trim())}`,
+        )
+        return
+      }
+
+      navigate(
+        `/verify-email?email=${encodeURIComponent(formData.email.trim())}`,
+      )
     } catch (error) {
       setError(error.message)
     } finally {
@@ -96,7 +98,7 @@ function RegisterPage() {
             Registro
           </p>
 
-          <h1 className="mt-3 text-3xl font-bold">Crear cuenta de artista</h1>
+          <h1 className="mt-3 text-3xl font-bold">Crear cuenta</h1>
 
           {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 
@@ -157,54 +159,21 @@ function RegisterPage() {
             </div>
             <div>
               <label className="text-sm font-medium text-zinc-300">
-                Nombre artistico
-              </label>
-              <input
-                type="text"
-                name="artistName"
-                value={formData.artistName}
-                onChange={handleChange}
-                className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-zinc-300">
-                Categoria artistica
+                Intereses creativos
               </label>
               <select
-                name="category"
-                value={formData.category}
+                name="interests"
+                value={formData.interests}
                 onChange={handleChange}
-                required
-                disabled={isLoadingCategories}
                 className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
               >
-                <option value="">
-                  {isLoadingCategories
-                    ? 'Cargando categorias...'
-                    : 'Selecciona una categoria'}
-                </option>
-
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
+                <option value="">Selecciona un interes principal</option>
+                {INTEREST_OPTIONS.map((interest) => (
+                  <option key={interest} value={interest}>
+                    {interest}
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-zinc-300">
-                Ubicacion
-              </label>
-              <input
-                type="text"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
-              />
             </div>
 
             <Button>{isSubmitting ? 'Creando cuenta...' : 'Crear cuenta'}</Button>

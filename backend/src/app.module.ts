@@ -1,6 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { ArtistsModule } from './artists/artists.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { AuthModule } from './auth/auth.module';
@@ -9,6 +7,10 @@ import { UploadsModule } from './uploads/uploads.module';
 import { CommissionsModule } from './commissions/commissions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { JobPostsModule } from './job-posts/job-posts.module';
+import { DigitalProductsModule } from './digital-products/digital-products.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -20,8 +22,10 @@ import { PaymentsModule } from './payments/payments.module';
     CommissionsModule,
     NotificationsModule,
     PaymentsModule,
+    ReviewsModule,
+    JobPostsModule,
+    DigitalProductsModule,
+    AdminModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

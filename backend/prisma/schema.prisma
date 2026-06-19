@@ -22,37 +22,68 @@ enum UserRole {
 enum MediaType {
   IMAGE
   VIDEO
-  AUDIO
-  EMBED
+  PDF
+}
+
+enum ServiceMode {
+  ONLINE
+  IN_PERSON
+  BOTH
 }
 
 model User {
-  id           Int            @id @default(autoincrement())
-  email        String         @unique
-  passwordHash String
-  role         UserRole       @default(ARTIST)
-  profile      ArtistProfile?
-  portfolioLikes PortfolioLike[]
-  notifications Notification[]
+  id                         Int                 @id @default(autoincrement())
+  email                      String              @unique
+  fullName                   String?
+  interests                  String?             @db.Text
+  googleId                   String?             @unique
+  emailVerifiedAt            DateTime?
+  emailVerificationToken     String?             @unique
+  emailVerificationExpiresAt DateTime?
+  passwordHash               String
+  role                       UserRole            @default(ARTIST)
+  isSuspended                Boolean             @default(false)
+  profile                    ArtistProfile?
+  portfolioLikes             PortfolioLike[]
+  notifications              Notification[]
+  clientCommissionRequests   CommissionRequest[] @relation("ClientCommissionRequests")
+  clientReviewsReceived      ClientReview[]      @relation("ClientReviewsReceived")
+  jobPosts                   JobPost[]           @relation("ClientJobPosts")
+  commissionAttachments      CommissionAttachment[]
+  openedCommissionDisputes   CommissionDispute[] @relation("OpenedCommissionDisputes")
+  resolvedCommissionDisputes CommissionDispute[] @relation("ResolvedCommissionDisputes")
+  digitalProductPurchases    DigitalProductPurchase[] @relation("DigitalProductPurchases")
+  adminActionLogs            AdminActionLog[]     @relation("AdminActionLogs")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model ArtistProfile {
-  id              Int             @id @default(autoincrement())
-  userId          Int             @unique
-  fullName        String?
-  artistName      String?
-  bio             String?         @db.Text
-  categoryId      Int?
-  category        ArtistCategory? @relation(fields: [categoryId], references: [id])
-  location        String?
-  profileImageUrl String?
-  coverImageUrl   String?
-  portfolioItems  PortfolioItem[]
+  id                 Int                 @id @default(autoincrement())
+  userId             Int                 @unique
+  fullName           String?
+  artistName         String?
+  bio                String?             @db.Text
+  categoryId         Int?
+  category           ArtistCategory?     @relation(fields: [categoryId], references: [id])
+  location           String?
+  profileImageUrl    String?
+  coverImageUrl      String?
+  commissionTypes    String?             @db.Text
+  startingPrice      String?
+  servicePriceRange  String?
+  serviceMode        ServiceMode         @default(ONLINE)
+  serviceArea        String?
+  serviceDescription String?             @db.Text
+  interests          String?             @db.Text
+  isHidden           Boolean             @default(false)
+  portfolioItems     PortfolioItem[]
   commissionRequests CommissionRequest[]
-  
+  reviews            Review[]
+  clientReviewsGiven ClientReview[]
+  jobApplications    JobApplication[]
+  digitalProducts    DigitalProduct[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -68,14 +99,37 @@ model PortfolioItem {
   mediaType       MediaType
   mediaUrl        String
   thumbnailUrl    String?
+  isHidden        Boolean   @default(false)
   viewCount       Int       @default(0)
   likeCount       Int       @default(0)
 
-  artistProfile ArtistProfile @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  artistProfile ArtistProfile   @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
   likes         PortfolioLike[]
+  assets        PortfolioAsset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PortfolioAsset {
+  id              Int       @id @default(autoincrement())
+  portfolioItemId Int
+  mediaType       MediaType
+  url             String
+  thumbnailUrl    String?
+  publicId        String?
+  resourceType    String?
+  deliveryType    String?
+  name            String?
+  mimeType        String?
+  size            Int?
+  sortOrder       Int       @default(0)
+
+  portfolioItem PortfolioItem @relation(fields: [portfolioItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([portfolioItemId])
 }
 
 model PortfolioLike {
@@ -94,6 +148,7 @@ model ArtistCategory {
   name     String          @unique
   slug     String          @unique
   profiles ArtistProfile[]
+  jobPosts JobPost[]
 }
 
 enum CommissionStatus {
@@ -103,7 +158,43 @@ enum CommissionStatus {
   CLIENT_ACCEPTED
   CLIENT_REJECTED
   ACCEPTED
+  PAYMENT_PENDING
+  IN_PROGRESS
+  DELIVERED
+  REVISION_REQUESTED
+  COMPLETED
   REJECTED
+  CANCELLED_BY_CLIENT
+  CANCELLED_BY_ARTIST
+  DISPUTED
+}
+
+enum CommissionAttachmentType {
+  CLIENT_REFERENCE
+  ARTIST_PREVIEW
+  ARTIST_FINAL
+  DISPUTE_EVIDENCE
+}
+
+enum CommissionDisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum JobPostStatus {
+  OPEN
+  IN_REVIEW
+  PAUSED
+  ASSIGNED
+  CLOSED
+}
+
+enum JobApplicationStatus {
+  PENDING
+  SHORTLISTED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
 }
 
 enum PaymentStatus {
@@ -113,21 +204,230 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum PaymentPurpose {
+  COMMISSION
+  REVISION_EXTRA
+}
+
+enum DigitalProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum DigitalProductAssetKind {
+  PREVIEW
+  DOWNLOAD
+}
+
+enum DigitalProductPurchaseStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
 
 model CommissionRequest {
-  id              Int              @id @default(autoincrement())
+  id                     Int                  @id @default(autoincrement())
+  artistProfileId        Int
+  clientUserId           Int?
+  clientName             String
+  clientEmail            String
+  projectTitle           String?
+  message                String               @db.Text
+  budget                 String?
+  budgetMin              String?
+  budgetMax              String?
+  desiredDeadline        DateTime?
+  isFlexibleDeadline     Boolean              @default(false)
+  serviceMode            ServiceMode?
+  artistNote             String?              @db.Text
+  artistResponse         String?              @db.Text
+  quotedPrice            String?
+  rejectionReason        String?              @db.Text
+  deliveryMessage        String?              @db.Text
+  deliveryUrl            String?
+  deliveryPreviewUrl     String?
+  finalFileUrl           String?
+  includedRevisions      Int                  @default(1)
+  usedRevisions          Int                  @default(0)
+  extraRevisionPrice     String?
+  cancellationRetentionPercent Int            @default(0)
+  cancelledByUserId      Int?
+  cancelledAt            DateTime?
+  cancellationReason     String?              @db.Text
+  clientResponseDeadline DateTime?
+  autoApprovedAt         DateTime?
+  revisionRequest        String?              @db.Text
+  deliveredAt            DateTime?
+  completedAt            DateTime?
+  status                 CommissionStatus     @default(PENDING)
+  artistProfile          ArtistProfile        @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  clientUser             User?                @relation("ClientCommissionRequests", fields: [clientUserId], references: [id], onDelete: SetNull)
+  paymentTransactions    PaymentTransaction[]
+  review                 Review?
+  clientReview           ClientReview?
+  jobApplication         JobApplication?
+  attachments            CommissionAttachment[]
+  disputes               CommissionDispute[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CommissionDispute {
+  id                  Int                     @id @default(autoincrement())
+  commissionRequestId Int
+  openedByUserId      Int
+  resolvedByUserId    Int?
+  reason              String                  @db.Text
+  status              CommissionDisputeStatus @default(OPEN)
+  resolution           String?                 @db.Text
+  resolvedAt          DateTime?
+  commissionRequest   CommissionRequest       @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
+  openedByUser        User                    @relation("OpenedCommissionDisputes", fields: [openedByUserId], references: [id], onDelete: Cascade)
+  resolvedByUser      User?                   @relation("ResolvedCommissionDisputes", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CommissionAttachment {
+  id                  Int                      @id @default(autoincrement())
+  commissionRequestId Int
+  uploadedByUserId    Int
+  type                CommissionAttachmentType
+  url                 String                   @db.Text
+  publicId            String?
+  resourceType        String?
+  deliveryType        String?
+  previewUrl          String?                  @db.Text
+  name                String?
+  mimeType            String?
+  size                Int?
+  commissionRequest   CommissionRequest        @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
+  uploadedByUser      User                     @relation(fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model JobPost {
+  id                 Int              @id @default(autoincrement())
+  clientUserId       Int
+  title              String
+  description        String           @db.Text
+  categoryId         Int?
+  budgetMin          String?
+  budgetMax          String?
+  desiredDeadline    DateTime?
+  isFlexibleDeadline Boolean          @default(false)
+  serviceMode        ServiceMode?
+  location           String?
+  status             JobPostStatus    @default(OPEN)
+  clientUser         User             @relation("ClientJobPosts", fields: [clientUserId], references: [id], onDelete: Cascade)
+  category           ArtistCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  applications       JobApplication[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JobApplication {
+  id                  Int                  @id @default(autoincrement())
+  jobPostId           Int
+  artistProfileId     Int
+  commissionRequestId Int?                 @unique
+  message             String               @db.Text
+  proposedPrice       String
+  estimatedTimeline   String?
+  portfolioLinks      String?              @db.Text
+  status              JobApplicationStatus @default(PENDING)
+  jobPost             JobPost              @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  artistProfile       ArtistProfile        @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  commissionRequest   CommissionRequest?   @relation(fields: [commissionRequestId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobPostId, artistProfileId])
+}
+
+model DigitalProduct {
+  id              Int                  @id @default(autoincrement())
   artistProfileId Int
-  clientName      String
-  clientEmail     String
-  message         String           @db.Text
-  budget          String?
-  artistNote      String?          @db.Text
-  artistResponse  String?          @db.Text
-  quotedPrice     String?
-  rejectionReason String?          @db.Text
-  status          CommissionStatus @default(PENDING)
-  artistProfile   ArtistProfile    @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
-  paymentTransactions PaymentTransaction[]
+  title           String
+  description     String               @db.Text
+  price           String
+  currency        String               @default("USD")
+  coverImageUrl   String?              @db.Text
+  status          DigitalProductStatus @default(DRAFT)
+  artistProfile   ArtistProfile        @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  assets          DigitalProductAsset[]
+  purchases       DigitalProductPurchase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DigitalProductAsset {
+  id               Int                     @id @default(autoincrement())
+  digitalProductId Int
+  kind             DigitalProductAssetKind
+  url              String                  @db.Text
+  publicId         String?
+  resourceType     String?
+  deliveryType     String?
+  name             String?
+  mimeType         String?
+  size             Int?
+  digitalProduct   DigitalProduct          @relation(fields: [digitalProductId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model DigitalProductPurchase {
+  id               Int                          @id @default(autoincrement())
+  digitalProductId Int
+  buyerUserId      Int
+  amount           String
+  currency         String                       @default("USD")
+  status           DigitalProductPurchaseStatus @default(PENDING)
+  provider         String                       @default("PAYPAL")
+  providerOrderId  String?                      @unique
+  paidAt           DateTime?
+  digitalProduct   DigitalProduct               @relation(fields: [digitalProductId], references: [id], onDelete: Cascade)
+  buyerUser        User                         @relation("DigitalProductPurchases", fields: [buyerUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([digitalProductId, buyerUserId])
+}
+
+model ClientReview {
+  id                  Int               @id @default(autoincrement())
+  clientUserId        Int
+  artistProfileId     Int
+  commissionRequestId Int               @unique
+  rating              Int
+  comment             String            @db.Text
+  clientUser          User              @relation("ClientReviewsReceived", fields: [clientUserId], references: [id], onDelete: Cascade)
+  artistProfile       ArtistProfile     @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  commissionRequest   CommissionRequest @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Review {
+  id                  Int               @id @default(autoincrement())
+  artistProfileId     Int
+  commissionRequestId Int               @unique
+  clientName          String
+  rating              Int
+  comment             String            @db.Text
+  artistProfile       ArtistProfile     @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
+  commissionRequest   CommissionRequest @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -149,22 +449,39 @@ model Notification {
   isRead          Boolean          @default(false)
   relatedEntityId Int?
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model PaymentTransaction {
-  id                  Int             @id @default(autoincrement())
+  id                  Int               @id @default(autoincrement())
   commissionRequestId Int
   amount              String
-  currency            String          @default("USD")
-  status              PaymentStatus   @default(PENDING)
-  provider            String          @default("PAYPAL")
+  currency            String            @default("USD")
+  status              PaymentStatus     @default(PENDING)
+  purpose             PaymentPurpose    @default(COMMISSION)
+  description         String?
+  provider            String            @default("PAYPAL")
   providerOrderId     String?
+  releasedAt          DateTime?
   commissionRequest   CommissionRequest @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AdminActionLog {
+  id          Int      @id @default(autoincrement())
+  adminUserId Int
+  action      String
+  targetType  String
+  targetId    Int?
+  metadata    String?  @db.Text
+  adminUser   User     @relation("AdminActionLogs", fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([adminUserId])
+  @@index([targetType, targetId])
 }

@@ -9,19 +9,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentTransactionDto } from './dto/create-payment-transaction.dto';
 import { MailService } from '../mail/mail.service';
-import {
-  CheckoutPaymentIntent,
-  Client,
-  Environment,
-  OrderRequest,
-  OrdersController,
-} from '@paypal/paypal-server-sdk';
+import { PayPalService } from '../paypal/paypal.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
+    private readonly paypalService: PayPalService,
   ) {}
 
   private getFrontendUrl() {
@@ -35,44 +30,6 @@ export class PaymentsService {
     return artistProfile.artistName || artistProfile.fullName || 'artista';
   }
 
-  private createPayPalClient() {
-    const clientId = process.env.PAYPAL_CLIENT_ID;
-    const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-    const environment =
-      process.env.PAYPAL_ENVIRONMENT === 'production'
-        ? Environment.Production
-        : Environment.Sandbox;
-
-    if (!clientId || !clientSecret) {
-      throw new Error('PayPal no esta configurado en el backend');
-    }
-
-    return new Client({
-      clientCredentialsAuthCredentials: {
-        oAuthClientId: clientId,
-        oAuthClientSecret: clientSecret,
-      },
-      environment,
-      timeout: 0,
-    });
-  }
-
-  private normalizePaymentAmount(amount: string) {
-    const match = amount.match(/\d+(?:[.,]\d{1,2})?/);
-
-    if (!match) {
-      throw new BadRequestException('El monto debe incluir un numero valido');
-    }
-
-    const normalizedAmount = Number(match[0].replace(',', '.'));
-
-    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
-      throw new BadRequestException('El monto debe ser mayor a cero');
-    }
-
-    return normalizedAmount.toFixed(2);
-  }
-
     findCheckoutByPayPalOrderId(paypalOrderId: string) {
     return this.prisma.paymentTransaction.findFirst({
       where: {
@@ -83,6 +40,8 @@ export class PaymentsService {
         amount: true,
         currency: true,
         status: true,
+        purpose: true,
+        description: true,
         provider: true,
         providerOrderId: true,
         commissionRequest: {
@@ -136,6 +95,7 @@ export class PaymentsService {
       await this.prisma.paymentTransaction.findFirst({
         where: {
           commissionRequestId,
+          purpose: 'COMMISSION',
         },
       });
 
@@ -145,12 +105,28 @@ export class PaymentsService {
       );
     }
 
-    return this.prisma.paymentTransaction.create({
-      data: {
-        commissionRequestId,
-        amount: this.normalizePaymentAmount(createPaymentTransactionDto.amount),
-        currency: createPaymentTransactionDto.currency ?? 'USD',
-      },
+    return this.prisma.$transaction(async (transaction) => {
+      const paymentTransaction = await transaction.paymentTransaction.create({
+        data: {
+          commissionRequestId,
+          amount: this.paypalService.normalizeAmount(
+            createPaymentTransactionDto.amount,
+          ),
+          currency: createPaymentTransactionDto.currency ?? 'USD',
+          purpose: 'COMMISSION',
+        },
+      });
+
+      await transaction.commissionRequest.update({
+        where: {
+          id: commissionRequestId,
+        },
+        data: {
+          status: 'PAYMENT_PENDING',
+        },
+      });
+
+      return paymentTransaction;
     });
   }
     findMyTransactions(artistUserId: number) {
@@ -189,7 +165,7 @@ export class PaymentsService {
       },
     });
   }
-    async createPayPalOrder(paymentTransactionId: number, artistUserId: number) {
+    async createPayPalOrder(paymentTransactionId: number, userId: number) {
     const paymentTransaction = await this.prisma.paymentTransaction.findUnique({
       where: { id: paymentTransactionId },
       include: {
@@ -205,7 +181,11 @@ export class PaymentsService {
       throw new NotFoundException('Transaccion de pago no encontrada');
     }
 
-    if (paymentTransaction.commissionRequest.artistProfile.userId !== artistUserId) {
+    const canManagePayment =
+      paymentTransaction.commissionRequest.artistProfile.userId === userId ||
+      paymentTransaction.commissionRequest.clientUserId === userId;
+
+    if (!canManagePayment) {
       throw new ForbiddenException('No puedes crear esta orden de pago');
     }
 
@@ -231,49 +211,18 @@ export class PaymentsService {
       });
     }
 
-    const paypalClient = this.createPayPalClient();
-    const paypalAmount = this.normalizePaymentAmount(paymentTransaction.amount);
-
-    const orderRequest: OrderRequest = {
-      intent: CheckoutPaymentIntent.Capture,
-      purchaseUnits: [
-        {
-          referenceId: `atrium-payment-${paymentTransaction.id}`,
-          customId: String(paymentTransaction.id),
-          description: `Comision Atrium #${paymentTransaction.commissionRequest.id}`,
-          amount: {
-            currencyCode: paymentTransaction.currency,
-            value: paypalAmount,
-          },
-        },
-      ],
-    };
-
-   const ordersController = new OrdersController(paypalClient);
-
-    let orderResponse;
-
-    try {
-      orderResponse = await ordersController.createOrder({
-        body: orderRequest,
-        prefer: 'return=representation',
-      });
-    } catch (error) {
-      const paypalError = error as {
-        result?: { message?: string; details?: { description?: string }[] };
-      };
-      const detail = paypalError.result?.details?.[0]?.description;
-
-      throw new BadRequestException(
-        detail || paypalError.result?.message || 'PayPal rechazo la orden',
-      );
-    }
-
-    const paypalOrderId = orderResponse.result.id;
-
-    if (!paypalOrderId) {
-      throw new Error('PayPal no devolvio un id de orden');
-    }
+    const paypalAmount = this.paypalService.normalizeAmount(
+      paymentTransaction.amount,
+    );
+    const paypalOrderId = await this.paypalService.createOrder({
+      referenceId: `atrium-payment-${paymentTransaction.id}`,
+      customId: String(paymentTransaction.id),
+      description:
+        paymentTransaction.description ||
+        `Comision Atrium #${paymentTransaction.commissionRequest.id}`,
+      currency: paymentTransaction.currency,
+      amount: paypalAmount,
+    });
 
     const updatedPaymentTransaction = await this.prisma.paymentTransaction.update({
       where: { id: paymentTransaction.id },
@@ -342,49 +291,60 @@ export class PaymentsService {
       throw new ConflictException('Solo se pueden capturar pagos pendientes');
     }
 
-    const paypalClient = this.createPayPalClient();
-    const ordersController = new OrdersController(paypalClient);
+    const nextStatus = (await this.paypalService.captureOrder(paypalOrderId))
+      ? 'PAID'
+      : 'FAILED';
 
-    let captureResponse;
-
-    try {
-      captureResponse = await ordersController.captureOrder({
-        id: paypalOrderId,
-        prefer: 'return=representation',
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.paymentTransaction.update({
+        where: {
+          id: paymentTransaction.id,
+        },
+        data: {
+          status: nextStatus,
+        },
       });
-    } catch (error) {
-      const paypalError = error as {
-        result?: { message?: string; details?: { description?: string }[] };
-      };
-      const detail = paypalError.result?.details?.[0]?.description;
 
-      throw new BadRequestException(
-        detail || paypalError.result?.message || 'PayPal rechazo la captura',
-      );
-    }
+      if (nextStatus === 'PAID') {
+        if (paymentTransaction.purpose === 'COMMISSION') {
+          await transaction.commissionRequest.update({
+            where: {
+              id: paymentTransaction.commissionRequestId,
+            },
+            data: {
+              status: 'IN_PROGRESS',
+            },
+          });
+        }
+      }
 
-    const nextStatus =
-      captureResponse.result.status === 'COMPLETED' ? 'PAID' : 'FAILED';
-
-    return this.prisma.paymentTransaction.update({
-      where: {
-        id: paymentTransaction.id,
-      },
-      data: {
-        status: nextStatus,
-      },
-      include: {
-        commissionRequest: {
-          select: {
-            id: true,
-            clientName: true,
-            clientEmail: true,
-            status: true,
-            quotedPrice: true,
-            artistResponse: true,
+      return transaction.paymentTransaction.findUnique({
+        where: {
+          id: paymentTransaction.id,
+        },
+        include: {
+          commissionRequest: {
+            select: {
+              id: true,
+              clientName: true,
+              clientEmail: true,
+              message: true,
+              status: true,
+              quotedPrice: true,
+              artistResponse: true,
+              artistProfile: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  artistName: true,
+                  location: true,
+                  profileImageUrl: true,
+                },
+              },
+            },
           },
         },
-      },
+      });
     });
   }
   

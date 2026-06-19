@@ -4,7 +4,10 @@ import Button from '../components/Button'
 import PortfolioItemCard from '../components/PortfolioItemCard'
 import { Link } from 'react-router-dom'
 import { API_URL } from '../config/api'
-import { isAuthenticated } from '../utils/auth'
+import {
+  getAuthUser,
+  isAuthenticated,
+} from '../utils/auth'
 
 
 function getArtistDisplayName(artist) {
@@ -18,7 +21,14 @@ function HomePage() {
   const [portfolioItems, setPortfolioItems] = useState([])
   const [categories, setCategories] = useState([])
   const [selectedCategory, setSelectedCategory] = useState('all')
-  const profileLink = isAuthenticated() ? '/dashboard' : '/register'
+  const authUser = getAuthUser()
+  const loggedIn = isAuthenticated()
+  const profileLink = loggedIn ? '/dashboard' : '/register'
+  const profileButtonLabel = !loggedIn
+    ? 'Crear perfil'
+    : authUser?.profile
+      ? 'Mi perfil'
+      : 'Crear perfil artistico'
 
   useEffect(() => {
     async function loadHomePageData() {
@@ -57,11 +67,11 @@ function HomePage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
       <section className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16">
-        <p className="mb-4 text-sm font-semibold uppercase tracking-wide text-violet-400">
+        <p className="mb-4 text-3xl font-black uppercase tracking-wide text-violet-400 sm:text-5xl">
           Atrium
         </p>
 
-        <h1 className="max-w-3xl text-4xl font-bold leading-tight sm:text-6xl">
+        <h1 className="max-w-3xl text-3xl font-bold leading-tight sm:text-5xl">
           Una plataforma de portafolios para artistas y creativos.
         </h1>
 
@@ -75,7 +85,7 @@ function HomePage() {
           </a>
 
           <Link to={profileLink}>
-            <Button variant="secondary">Crear perfil</Button>
+            <Button variant="secondary">{profileButtonLabel}</Button>
           </Link>
         </div>
         {!isLoading && !error && (
@@ -155,6 +165,7 @@ function HomePage() {
                   mediaType={item.mediaType}
                   mediaUrl={item.mediaUrl}
                   thumbnailUrl={item.thumbnailUrl}
+                  assets={item.assets}
                   artistName={getArtistDisplayName(item.artistProfile)}
                   viewCount={item.viewCount}
                   likeCount={item.likeCount}

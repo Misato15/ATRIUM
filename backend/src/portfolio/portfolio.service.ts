@@ -4,8 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { MediaType } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreatePortfolioItemDto } from './dto/create-portfolio-item.dto';
+import {
+  CreatePortfolioItemDto,
+  PortfolioAssetDto,
+} from './dto/create-portfolio-item.dto';
 
 @Injectable()
 export class PortfolioService {
@@ -13,11 +17,25 @@ export class PortfolioService {
 
   findAll() {
     return this.prisma.portfolioItem.findMany({
+      where: {
+        isHidden: false,
+        artistProfile: {
+          isHidden: false,
+          user: {
+            isSuspended: false,
+          },
+        },
+      },
       orderBy: {
         createdAt: 'desc',
       },
       include: {
         artistProfile: true,
+        assets: {
+          orderBy: {
+            sortOrder: 'asc',
+          },
+        },
       },
     });
   }
@@ -31,12 +49,30 @@ export class PortfolioService {
         artistProfile: {
           include: {
             category: true,
+            user: {
+              select: {
+                isSuspended: true,
+              },
+            },
+          },
+        },
+        assets: {
+          orderBy: {
+            sortOrder: 'asc',
           },
         },
       },
     });
 
     if (!portfolioItem) {
+      throw new NotFoundException('Obra no encontrada');
+    }
+
+    if (
+      portfolioItem.isHidden ||
+      portfolioItem.artistProfile.isHidden ||
+      portfolioItem.artistProfile.user.isSuspended
+    ) {
       throw new NotFoundException('Obra no encontrada');
     }
 
@@ -202,6 +238,11 @@ export class PortfolioService {
               category: true,
             },
           },
+          assets: {
+            orderBy: {
+              sortOrder: 'asc',
+            },
+          },
         },
       });
 
@@ -216,9 +257,12 @@ export class PortfolioService {
     userId: number,
     createPortfolioItemDto: CreatePortfolioItemDto,
   ) {
-    if (!createPortfolioItemDto.mediaUrl?.trim()) {
+    const assets = this.getAssets(createPortfolioItemDto);
+    const cover = assets[0];
+
+    if (!cover) {
       throw new BadRequestException(
-        'Debes subir una imagen para publicar la obra',
+        'Debes subir al menos un archivo para publicar la obra',
       );
     }
 
@@ -237,10 +281,182 @@ export class PortfolioService {
         artistProfileId: profile.id,
         title: createPortfolioItemDto.title,
         description: createPortfolioItemDto.description,
-        mediaType: createPortfolioItemDto.mediaType,
-        mediaUrl: createPortfolioItemDto.mediaUrl,
-        thumbnailUrl: createPortfolioItemDto.thumbnailUrl,
+        mediaType: cover.mediaType,
+        mediaUrl: cover.url,
+        thumbnailUrl: cover.thumbnailUrl,
+        assets: {
+          create: assets.map((asset, index) => ({
+            mediaType: asset.mediaType,
+            url: asset.url,
+            thumbnailUrl: asset.thumbnailUrl,
+            publicId: asset.publicId,
+            resourceType: asset.resourceType,
+            deliveryType: asset.deliveryType,
+            name: asset.name,
+            mimeType: asset.mimeType,
+            size: asset.size,
+            sortOrder: asset.sortOrder ?? index,
+          })),
+        },
+      },
+      include: this.getPortfolioInclude(),
+    });
+  }
+
+  async updateForUser(
+    id: number,
+    userId: number,
+    updatePortfolioItemDto: CreatePortfolioItemDto,
+  ) {
+    await this.ensureOwnsPortfolioItem(id, userId);
+
+    if (!updatePortfolioItemDto.title?.trim()) {
+      throw new BadRequestException('El titulo es obligatorio');
+    }
+
+    const assets = this.getAssets(updatePortfolioItemDto);
+    const cover = assets[0];
+
+    if (!cover) {
+      throw new BadRequestException('La obra necesita al menos un archivo');
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      await transaction.portfolioAsset.deleteMany({
+        where: {
+          portfolioItemId: id,
+        },
+      });
+
+      return transaction.portfolioItem.update({
+        where: {
+          id,
+        },
+        data: {
+          title: updatePortfolioItemDto.title,
+          description: updatePortfolioItemDto.description,
+          mediaType: cover.mediaType,
+          mediaUrl: cover.url,
+          thumbnailUrl: cover.thumbnailUrl,
+          assets: {
+            create: assets.map((asset, index) => ({
+              mediaType: asset.mediaType,
+              url: asset.url,
+              thumbnailUrl: asset.thumbnailUrl,
+              publicId: asset.publicId,
+              resourceType: asset.resourceType,
+              deliveryType: asset.deliveryType,
+              name: asset.name,
+              mimeType: asset.mimeType,
+              size: asset.size,
+              sortOrder: asset.sortOrder ?? index,
+            })),
+          },
+        },
+        include: this.getPortfolioInclude(),
+      });
+    });
+  }
+
+  async removeForUser(id: number, userId: number) {
+    await this.ensureOwnsPortfolioItem(id, userId);
+
+    await this.prisma.portfolioItem.delete({
+      where: {
+        id,
       },
     });
+
+    return {
+      deleted: true,
+      id,
+    };
+  }
+
+  private async ensureOwnsPortfolioItem(id: number, userId: number) {
+    const portfolioItem = await this.prisma.portfolioItem.findUnique({
+      where: {
+        id,
+      },
+      select: {
+        id: true,
+        artistProfile: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!portfolioItem) {
+      throw new NotFoundException('Obra no encontrada');
+    }
+
+    if (portfolioItem.artistProfile.userId !== userId) {
+      throw new ForbiddenException('No puedes modificar esta obra');
+    }
+
+    return portfolioItem;
+  }
+
+  private getPortfolioInclude() {
+    return {
+      artistProfile: {
+        include: {
+          category: true,
+        },
+      },
+      assets: {
+        orderBy: {
+          sortOrder: 'asc' as const,
+        },
+      },
+    };
+  }
+
+  private getAssets(dto: CreatePortfolioItemDto): PortfolioAssetDto[] {
+    const assets =
+      dto.assets
+        ?.map((asset, index) => ({
+          ...asset,
+          sortOrder: asset.sortOrder ?? index,
+        }))
+        .filter((asset) => asset.url?.trim()) || [];
+
+    if (assets.length > 0) {
+      return assets.map((asset) => ({
+        ...asset,
+        mediaType: this.getMediaType(asset.mediaType, asset.mimeType),
+      }));
+    }
+
+    if (!dto.mediaUrl?.trim()) {
+      return [];
+    }
+
+    return [
+      {
+        mediaType: this.getMediaType(dto.mediaType, undefined),
+        url: dto.mediaUrl,
+        thumbnailUrl: dto.thumbnailUrl,
+        sortOrder: 0,
+      },
+    ];
+  }
+
+  private getMediaType(mediaType: MediaType | undefined, mimeType?: string) {
+    if (mediaType) {
+      return mediaType;
+    }
+
+    if (mimeType?.startsWith('video/')) {
+      return MediaType.VIDEO;
+    }
+
+    if (mimeType === 'application/pdf') {
+      return MediaType.PDF;
+    }
+
+    return MediaType.IMAGE;
   }
 }
