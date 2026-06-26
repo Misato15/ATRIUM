@@ -50,9 +50,11 @@ function formatDate(value) {
 }
 
 function formatDateForInput(value) {
-  return value ? formatDate(value) : ''
-}
+  if (!value) return ''
 
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : ''
+}
 function parseInputDate(value) {
   if (!value) {
     return null
@@ -151,6 +153,18 @@ function validateAmount(value, message) {
   if (parseBudgetNumber(value) === null) {
     throw new Error(message)
   }
+}
+
+function getJobBudgetLabel(jobPost) {
+  if (!jobPost?.budgetMin && !jobPost?.budgetMax) {
+    return 'Presupuesto abierto'
+  }
+
+  return `${jobPost.budgetMin || '0'} - ${jobPost.budgetMax || 'abierto'}`
+}
+
+function getClientProposedPrice(jobPost) {
+  return jobPost?.budgetMax || jobPost?.budgetMin || ''
 }
 
 function JobsPage() {
@@ -302,8 +316,8 @@ function JobsPage() {
 
     try {
       const desiredDeadline = jobFormData.desiredDeadline
-        ? parseInputDate(jobFormData.desiredDeadline)
-        : null
+  ? new Date(`${jobFormData.desiredDeadline}T00:00:00`)
+  : null
 
       if (jobFormData.desiredDeadline && !desiredDeadline) {
         throw new Error('Usa una fecha valida en formato dd/mm/yyyy')
@@ -319,12 +333,7 @@ function JobsPage() {
         : editingJobPostId
           ? null
           : undefined
-      const apiDesiredDeadline = desiredDeadline
-        ? toApiDate(desiredDeadline)
-        : editingJobPostId
-          ? null
-          : undefined
-
+    const apiDesiredDeadline = jobFormData.desiredDeadline || (editingJobPostId ? null : undefined)
       await fetchJson(`${API_URL}/job-posts${editingJobPostId ? `/${editingJobPostId}` : ''}`, {
         method: editingJobPostId ? 'PATCH' : 'POST',
         headers: {
@@ -537,7 +546,7 @@ function JobsPage() {
             </div>
           )}
 
-          <div className="mb-5 grid gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-4">
+          <div className="mb-5 grid gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-3">
             <select
               name="categoryId"
               value={filters.categoryId}
@@ -551,6 +560,7 @@ function JobsPage() {
                 </option>
               ))}
             </select>
+            {/* ponytail: modality filtering is hidden until onsite/remote jobs have a separate flow.
             <select
               name="serviceMode"
               value={filters.serviceMode}
@@ -561,7 +571,7 @@ function JobsPage() {
               <option value="ONLINE">Online</option>
               <option value="IN_PERSON">Presencial</option>
               <option value="BOTH">Online o presencial</option>
-            </select>
+            </select> */}
             <input
               name="budget"
               value={filters.budget}
@@ -615,11 +625,7 @@ function JobsPage() {
 
                     <div className="mt-4 grid gap-2 text-sm text-zinc-400 sm:grid-cols-4">
                       <span>{jobPost.category?.name || 'Categoria abierta'}</span>
-                      <span>
-                        {jobPost.budgetMin || jobPost.budgetMax
-                          ? `${jobPost.budgetMin || '0'} - ${jobPost.budgetMax || 'abierto'}`
-                          : 'Presupuesto abierto'}
-                      </span>
+                      <span>{getJobBudgetLabel(jobPost)}</span>
                       <span>{formatDate(jobPost.desiredDeadline)}</span>
                       <span>{jobPost._count?.applications || 0} aplicaciones</span>
                     </div>
@@ -652,7 +658,7 @@ function JobsPage() {
           )}
 
           {canPublishJobs && isJobFormOpen && (
-            <section className="fixed inset-0 z-50 overflow-y-auto bg-black/75 px-4 py-6">
+            <section className="dialog-motion fixed inset-0 z-50 overflow-y-auto bg-black/75 px-4 py-6">
               <div className="mx-auto max-w-xl rounded-lg border border-zinc-800 bg-zinc-900 p-5 shadow-2xl">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-bold">
@@ -713,14 +719,14 @@ function JobsPage() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input
-                    type="text"
-                    inputMode="numeric"
-                    name="desiredDeadline"
-                    value={jobFormData.desiredDeadline}
-                    onChange={handleJobFormChange}
-                    placeholder="dd/mm/yyyy"
-                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-violet-400"
-                  />
+                        type="date"
+                        name="desiredDeadline"
+                        value={jobFormData.desiredDeadline}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={handleJobFormChange}
+                      />
+                  
+                  {/* ponytail: keep backend default serviceMode, hide choice until this flow is defined.
                   <select
                     name="serviceMode"
                     value={jobFormData.serviceMode}
@@ -730,7 +736,7 @@ function JobsPage() {
                     <option value="ONLINE">Online</option>
                     <option value="IN_PERSON">Presencial</option>
                     <option value="BOTH">Online o presencial</option>
-                  </select>
+                  </select> */}
                 </div>
                 <input
                   name="location"
@@ -967,7 +973,7 @@ function JobsPage() {
       </div>
 
       {selectedJobPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6">
+        <div className="dialog-motion fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6">
           <section
             role="dialog"
             aria-modal="true"
@@ -1002,9 +1008,11 @@ function JobsPage() {
                 {selectedJobPost.clientUser?.fullName ||
                   selectedJobPost.clientUser?.email}
               </span>
+              {/* ponytail: modality display paused until onsite/remote projects have separate rules.
               <span>
                 Modalidad: {getServiceModeLabel(selectedJobPost.serviceMode)}
-              </span>
+              </span> */}
+              <span>Presupuesto del cliente: {getJobBudgetLabel(selectedJobPost)}</span>
               <span>
                 Ubicacion: {selectedJobPost.location || 'No especificada'}
               </span>
@@ -1033,6 +1041,20 @@ function JobsPage() {
                     placeholder="Precio propuesto, ej. 250 USD"
                     className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-violet-400"
                   />
+                  {getClientProposedPrice(selectedJobPost) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setApplicationFormData((currentData) => ({
+                          ...currentData,
+                          proposedPrice: getClientProposedPrice(selectedJobPost),
+                        }))
+                      }
+                      className="rounded-md border border-violet-400/40 px-3 py-2 text-left text-sm font-semibold text-violet-200 hover:bg-violet-400/10"
+                    >
+                      Usar precio del cliente: {getClientProposedPrice(selectedJobPost)}
+                    </button>
+                  )}
                   <input
                     name="estimatedTimeline"
                     value={applicationFormData.estimatedTimeline}

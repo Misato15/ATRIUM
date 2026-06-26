@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { ReviewsService } from './reviews.service';
@@ -27,5 +27,19 @@ export class ReviewsController {
   @Get('artists/:artistProfileId')
   findByArtist(@Param('artistProfileId') artistProfileId: string) {
     return this.reviewsService.findByArtist(Number(artistProfileId));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/visibility')
+  updateVisibility(
+    @Param('id') id: string,
+    @Req() request: { user: { userId: number } },
+    @Body() body: { isPublic?: boolean },
+  ) {
+    return this.reviewsService.updateArtistReviewVisibility(
+      request.user.userId,
+      Number(id),
+      Boolean(body.isPublic),
+    );
   }
 }

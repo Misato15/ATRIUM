@@ -86,9 +86,11 @@ function CommissionDeliveryPage() {
   }
 
   function handleReviewChange(event) {
+    const { checked, name, type, value } = event.target
+
     setReviewFormData({
       ...reviewFormData,
-      [event.target.name]: event.target.value,
+      [name]: type === 'checkbox' ? checked : value,
     })
   }
 

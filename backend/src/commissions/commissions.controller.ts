@@ -95,6 +95,34 @@ export class CommissionsController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Patch('client/:id/references')
+  addReferencesAsClient(
+    @Param('id') id: string,
+    @Req() request: { user: { userId: number } },
+    @Body() body: Pick<CreateCommissionRequestDto, 'referenceAttachments'>,
+  ) {
+    return this.commissionsService.addReferencesAsClient(
+      request.user.userId,
+      Number(id),
+      body.referenceAttachments,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('client/:id/note')
+  updateClientNote(
+    @Param('id') id: string,
+    @Req() request: { user: { userId: number } },
+    @Body() updateCommissionNoteDto: UpdateCommissionNoteDto,
+  ) {
+    return this.commissionsService.updateClientNote(
+      request.user.userId,
+      Number(id),
+      updateCommissionNoteDto.clientNote,
+    );
+  }
+
   @Get('deliveries/:id')
   findDelivery(@Param('id') id: string) {
     return this.commissionsService.findDelivery(Number(id));
@@ -210,6 +238,7 @@ export class CommissionsController {
       Number(id),
       updateCommissionStatusDto.status,
       updateCommissionStatusDto.rejectionReason,
+      updateCommissionStatusDto,
     );
   }
 

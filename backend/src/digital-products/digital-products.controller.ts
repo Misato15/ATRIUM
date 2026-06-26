@@ -31,6 +31,11 @@ export class DigitalProductsController {
     return this.digitalProductsService.findPublished();
   }
 
+  @Get('products/:id')
+  findPublishedById(@Param('id', ParseIntPipe) id: number) {
+    return this.digitalProductsService.findPublishedById(id);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   findMine(@Req() request: AuthenticatedRequest) {

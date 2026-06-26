@@ -12,6 +12,7 @@ backend/.env
 backend/.env.local
 backend/.env.production
 backend/.env.development
+backend/scripts/whitebox-env.local.ps1
 backend/cloudinary-onboarding.js
 
 frontend/node_modules

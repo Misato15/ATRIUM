@@ -81,6 +81,17 @@ export class CommissionsService {
     return deadline;
   }
 
+  private getAtriumCancellationRetentionPercent(commissionRequest: {
+    deliveredAt?: Date | null;
+    usedRevisions?: number | null;
+  }) {
+    if (!commissionRequest.deliveredAt) {
+      return 0;
+    }
+
+    return (commissionRequest.usedRevisions || 0) > 0 ? 50 : 25;
+  }
+
   private normalizeAttachmentInputs(
     attachments:
       | {
@@ -430,6 +441,7 @@ export class CommissionsService {
             createdAt: 'desc',
           },
         },
+        review: true,
         clientReview: true,
         clientUser: {
           select: {
@@ -492,6 +504,7 @@ export class CommissionsService {
             createdAt: 'desc',
           },
         },
+        review: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -501,6 +514,51 @@ export class CommissionsService {
     return commissionRequests.map((commissionRequest) =>
       this.hideLockedFinalFile(commissionRequest),
     );
+  }
+
+  async addReferencesAsClient(
+    userId: number,
+    commissionRequestId: number,
+    referenceAttachments: CreateCommissionRequestDto['referenceAttachments'],
+  ) {
+    const commissionRequest = await this.ensureClientOwnsCommissionRequest(
+      userId,
+      commissionRequestId,
+      'Comision no encontrada',
+    );
+    const attachments = this.normalizeAttachmentInputs(
+      referenceAttachments,
+      CommissionAttachmentType.CLIENT_REFERENCE,
+      userId,
+    );
+
+    if (attachments.length === 0) {
+      throw new BadRequestException('Debes adjuntar al menos una referencia');
+    }
+
+    const updatedCommissionRequest = await this.prisma.commissionRequest.update({
+      where: {
+        id: commissionRequestId,
+      },
+      data: {
+        attachments: {
+          create: attachments,
+        },
+      },
+      include: this.getCommissionSummaryInclude(),
+    });
+
+    await this.prisma.notification.create({
+      data: {
+        userId: commissionRequest.artistProfile.userId,
+        type: 'COMMISSION_REQUEST',
+        title: 'Nuevas referencias del cliente',
+        message: `${commissionRequest.clientName} adjunto referencias para la comision.`,
+        relatedEntityId: commissionRequest.id,
+      },
+    });
+
+    return this.hideLockedFinalFile(updatedCommissionRequest);
   }
 
   async getFinalDownloadUrl(
@@ -618,7 +676,7 @@ export class CommissionsService {
       notifyUserId: commissionRequest.artistProfile.userId,
       notificationTitle: 'Comision cancelada por el cliente',
       notificationMessage: commissionRequest.deliveredAt
-        ? `${commissionRequest.clientName} cancelo despues de una entrega. Aplica la retencion acordada de ${commissionRequest.cancellationRetentionPercent || 0}%.`
+        ? `${commissionRequest.clientName} cancelo despues de una entrega. Aplica la retencion Atrium de ${this.getAtriumCancellationRetentionPercent(commissionRequest)}%.`
         : `${commissionRequest.clientName} cancelo la comision antes de la entrega.`,
     });
   }
@@ -785,6 +843,12 @@ export class CommissionsService {
     commissionRequestId: number,
     status: CommissionStatus,
     rejectionReason?: string,
+    directAcceptTerms?: {
+      quotedPrice?: string;
+      includedRevisions?: number;
+      extraRevisionPrice?: string;
+      cancellationRetentionPercent?: number;
+    },
   ) {
     const commissionRequest = await this.ensureOwnsCommissionRequest(
       userId,
@@ -793,8 +857,10 @@ export class CommissionsService {
 
     const directAcceptableStatuses: CommissionStatus[] = [
       CommissionStatus.CLIENT_ACCEPTED,
+      CommissionStatus.CLIENT_REJECTED,
       CommissionStatus.REVIEWED,
       CommissionStatus.PENDING,
+      CommissionStatus.INQUIRY,
     ];
 
     if (
@@ -810,6 +876,15 @@ export class CommissionsService {
       throw new BadRequestException('Debes indicar el motivo de rechazo');
     }
 
+    const includedRevisions = Math.max(
+      0,
+      Math.floor(Number(directAcceptTerms?.includedRevisions ?? 1)),
+    );
+    const directAcceptQuotedPrice =
+      directAcceptTerms?.quotedPrice?.trim() ||
+      commissionRequest.quotedPrice ||
+      commissionRequest.budget;
+
     const updatedCommissionRequest = await this.prisma.commissionRequest.update({
       where: {
         id: commissionRequestId,
@@ -817,9 +892,18 @@ export class CommissionsService {
       data: {
         status,
         quotedPrice:
-          status === CommissionStatus.ACCEPTED && !commissionRequest.quotedPrice
-            ? commissionRequest.budget
+          status === CommissionStatus.ACCEPTED
+            ? directAcceptQuotedPrice
             : commissionRequest.quotedPrice,
+        includedRevisions:
+          status === CommissionStatus.ACCEPTED && Number.isFinite(includedRevisions)
+            ? includedRevisions
+            : commissionRequest.includedRevisions,
+        extraRevisionPrice:
+          status === CommissionStatus.ACCEPTED
+            ? directAcceptTerms?.extraRevisionPrice?.trim() || null
+            : commissionRequest.extraRevisionPrice,
+        cancellationRetentionPercent: 0,
         rejectionReason:
           status === CommissionStatus.REJECTED
             ? rejectionReason?.trim()
@@ -876,6 +960,40 @@ export class CommissionsService {
     });
   }
 
+  async updateClientNote(
+    userId: number,
+    commissionRequestId: number,
+    clientNote?: string,
+  ) {
+    const commissionRequest = await this.ensureClientOwnsCommissionRequest(
+      userId,
+      commissionRequestId,
+      'Comision no encontrada',
+    );
+
+    const updatedCommissionRequest = await this.prisma.commissionRequest.update({
+      where: {
+        id: commissionRequestId,
+      },
+      data: {
+        clientNote: clientNote?.trim() || null,
+      },
+      include: this.getCommissionSummaryInclude(),
+    });
+
+    await this.prisma.notification.create({
+      data: {
+        userId: commissionRequest.artistProfile.userId,
+        type: 'COMMISSION_REQUEST',
+        title: 'Nota del cliente',
+        message: `${commissionRequest.clientName} actualizo una nota en la comision.`,
+        relatedEntityId: commissionRequest.id,
+      },
+    });
+
+    return this.hideLockedFinalFile(updatedCommissionRequest);
+  }
+
   async updateMineProposal(
     userId: number,
     commissionRequestId: number,
@@ -895,17 +1013,11 @@ export class CommissionsService {
     );
     const extraRevisionPrice =
       updateCommissionProposalDto.extraRevisionPrice?.trim() || null;
-    const cancellationRetentionPercent = Math.min(
-      100,
-      Math.max(
-        0,
-        Math.floor(
-          Number(updateCommissionProposalDto.cancellationRetentionPercent ?? 0),
-        ),
-      ),
-    );
+    const onlyUpdatingTerms =
+      commissionRequest.status === CommissionStatus.ACCEPTED ||
+      commissionRequest.status === CommissionStatus.PAYMENT_PENDING;
 
-    if (!artistResponse || !quotedPrice) {
+    if (!onlyUpdatingTerms && (!artistResponse || !quotedPrice)) {
       throw new BadRequestException(
         'La propuesta necesita respuesta y cotizacion',
       );
@@ -916,21 +1028,21 @@ export class CommissionsService {
         id: commissionRequestId,
       },
       data: {
-        artistResponse,
-        quotedPrice,
+        artistResponse: onlyUpdatingTerms ? undefined : artistResponse,
+        quotedPrice: quotedPrice || commissionRequest.quotedPrice,
         includedRevisions: Number.isFinite(includedRevisions)
           ? includedRevisions
           : 1,
         extraRevisionPrice,
-        cancellationRetentionPercent: Number.isFinite(
-          cancellationRetentionPercent,
-        )
-          ? cancellationRetentionPercent
-          : 0,
-        rejectionReason: null,
-        status: CommissionStatus.PROPOSED,
+        cancellationRetentionPercent: 0,
+        rejectionReason: onlyUpdatingTerms ? commissionRequest.rejectionReason : null,
+        status: onlyUpdatingTerms ? commissionRequest.status : CommissionStatus.PROPOSED,
       },
     });
+
+    if (onlyUpdatingTerms) {
+      return updatedCommissionRequest;
+    }
 
     const proposalUrl = `${this.getFrontendUrl()}/commissions/proposals/${commissionRequestId}`;
 
@@ -1123,12 +1235,29 @@ export class CommissionsService {
     const deliverableStatuses: CommissionStatus[] = [
       CommissionStatus.IN_PROGRESS,
       CommissionStatus.REVISION_REQUESTED,
+      CommissionStatus.INQUIRY,
     ];
 
     if (!deliverableStatuses.includes(commissionRequest.status)) {
       throw new BadRequestException(
         'Solo puedes entregar comisiones en trabajo o con cambios solicitados',
       );
+    }
+
+    if (commissionRequest.status === CommissionStatus.INQUIRY) {
+      const paidCommissionPayment = await this.prisma.paymentTransaction.count({
+        where: {
+          commissionRequestId,
+          status: PaymentStatus.PAID,
+          purpose: PaymentPurpose.COMMISSION,
+        },
+      });
+
+      if (paidCommissionPayment === 0) {
+        throw new BadRequestException(
+          'La comision debe estar pagada antes de entregar',
+        );
+      }
     }
 
     const deliveryMessage = deliverCommissionDto.deliveryMessage?.trim();
@@ -1160,6 +1289,12 @@ export class CommissionsService {
     if (!firstPreviewUrl) {
       throw new BadRequestException(
         'Debes enviar una vista previa o link para revision',
+      );
+    }
+
+    if (!firstFinalUrl) {
+      throw new BadRequestException(
+        'Debes adjuntar el archivo final privado antes de entregar',
       );
     }
 
@@ -1338,7 +1473,10 @@ export class CommissionsService {
     },
     decision: 'ACCEPT' | 'REJECT' | 'REQUEST_REVISION',
   ) {
-    if (commissionRequest.status !== CommissionStatus.PROPOSED) {
+    if (
+      commissionRequest.status !== CommissionStatus.PROPOSED &&
+      commissionRequest.status !== CommissionStatus.INQUIRY
+    ) {
       throw new BadRequestException('Esta propuesta ya fue respondida');
     }
 
@@ -1432,7 +1570,6 @@ export class CommissionsService {
     }
 
     const disputeBlockedStatuses: CommissionStatus[] = [
-      CommissionStatus.COMPLETED,
       CommissionStatus.REJECTED,
       CommissionStatus.CANCELLED_BY_CLIENT,
       CommissionStatus.CANCELLED_BY_ARTIST,
@@ -1617,6 +1754,7 @@ export class CommissionsService {
     const cancellableStatuses: CommissionStatus[] = [
       CommissionStatus.PENDING,
       CommissionStatus.REVIEWED,
+      CommissionStatus.INQUIRY,
       CommissionStatus.PROPOSED,
       CommissionStatus.CLIENT_ACCEPTED,
       CommissionStatus.ACCEPTED,
@@ -1633,6 +1771,8 @@ export class CommissionsService {
         },
         select: {
           status: true,
+          deliveredAt: true,
+          usedRevisions: true,
         },
       });
 
@@ -1654,6 +1794,11 @@ export class CommissionsService {
             cancelledByUserId,
             cancelledAt: now,
             cancellationReason: reason?.trim() || null,
+            cancellationRetentionPercent: shouldReleasePaidPayment
+              ? this.getAtriumCancellationRetentionPercent(
+                  currentCommissionRequest,
+                )
+              : 0,
             clientResponseDeadline: null,
           },
           include: this.getCommissionSummaryInclude(),

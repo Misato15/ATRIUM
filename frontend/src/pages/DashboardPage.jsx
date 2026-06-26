@@ -103,6 +103,7 @@ function getCommissionStatusLabel(status) {
   const labels = {
     PENDING: 'Pendiente',
     REVIEWED: 'En revision',
+    INQUIRY: 'Consulta enviada',
     PROPOSED: 'Propuesta enviada',
     CLIENT_ACCEPTED: 'Cliente acepto',
     CLIENT_REJECTED: 'Cliente rechazo',
@@ -136,6 +137,7 @@ function getCommissionStatusClassName(status) {
     ALL: 'border-violet-400/40 bg-violet-400/10 text-violet-200',
     PENDING: 'border-amber-400/40 bg-amber-400/10 text-amber-200',
     REVIEWED: 'border-sky-400/40 bg-sky-400/10 text-sky-200',
+    INQUIRY: 'border-purple-400/40 bg-purple-400/10 text-purple-200',
     PROPOSED: 'border-indigo-400/40 bg-indigo-400/10 text-indigo-200',
     CLIENT_ACCEPTED: 'border-lime-400/40 bg-lime-400/10 text-lime-200',
     CLIENT_REJECTED: 'border-orange-400/40 bg-orange-400/10 text-orange-200',
@@ -255,6 +257,8 @@ function DashboardPage() {
   const [isOpeningDispute, setIsOpeningDispute] = useState(false)
   const [isPreparingFinalDownload, setIsPreparingFinalDownload] = useState(false)
   const [isSavingClientReview, setIsSavingClientReview] = useState(false)
+  const [updatingReviewVisibilityId, setUpdatingReviewVisibilityId] =
+    useState(null)
   const [updatingCommissionId, setUpdatingCommissionId] = useState(null)
   const [paymentError, setPaymentError] = useState('')
   const [creatingPaymentCommissionId, setCreatingPaymentCommissionId] =
@@ -270,7 +274,6 @@ function DashboardPage() {
     quotedPrice: '',
     includedRevisions: '1',
     extraRevisionPrice: '',
-    cancellationRetentionPercent: '0',
   })
   const [commissionDeliveryFormData, setCommissionDeliveryFormData] = useState({
     deliveryMessage: '',
@@ -284,9 +287,12 @@ function DashboardPage() {
     useState('')
   const [disputeEvidenceAttachments, setDisputeEvidenceAttachments] = useState([])
   const [disputeUploadStatus, setDisputeUploadStatus] = useState('')
+  const [cancelReason, setCancelReason] = useState('')
+  const [disputeReason, setDisputeReason] = useState('')
   const [clientReviewFormData, setClientReviewFormData] = useState({
     rating: '5',
     comment: '',
+    isPublic: false,
   })
   const [profileFormData, setProfileFormData] = useState({
     categoryId: '',
@@ -537,9 +543,6 @@ function DashboardPage() {
       quotedPrice: commissionRequest.quotedPrice || '',
       includedRevisions: String(commissionRequest.includedRevisions ?? 1),
       extraRevisionPrice: commissionRequest.extraRevisionPrice || '',
-      cancellationRetentionPercent: String(
-        commissionRequest.cancellationRetentionPercent ?? 0,
-      ),
     })
     setCommissionRejectionReason(commissionRequest.rejectionReason || '')
     setCommissionDeliveryFormData({
@@ -556,11 +559,14 @@ function DashboardPage() {
     setCommissionDeliveryUploadStatus('')
     setDisputeEvidenceAttachments([])
     setDisputeUploadStatus('')
+    setCancelReason('')
+    setDisputeReason('')
     setClientReviewFormData({
       rating: commissionRequest.clientReview?.rating
         ? String(commissionRequest.clientReview.rating)
         : '5',
       comment: commissionRequest.clientReview?.comment || '',
+      isPublic: Boolean(commissionRequest.clientReview?.isPublic),
     })
     setSelectedCommissionRequest(commissionRequest)
   }
@@ -735,7 +741,7 @@ function DashboardPage() {
     }
   }
 
-  async function handleUpdateCommissionStatus(commissionRequestId, status) {
+  async function handleUpdateCommissionStatus(commissionRequestId, status, extras = {}) {
     const token = getAuthToken()
     setCommissionError('')
     setUpdatingCommissionId(commissionRequestId)
@@ -755,6 +761,7 @@ function DashboardPage() {
           },
           body: JSON.stringify({
             status,
+            ...extras,
             rejectionReason:
               status === 'REJECTED' ? commissionRejectionReason : undefined,
           }),
@@ -798,9 +805,8 @@ function DashboardPage() {
       return
     }
 
-    const reason = window.prompt('Motivo de cancelacion')
-
-    if (reason === null) {
+    if (!cancelReason.trim()) {
+      setCommissionError('Escribe el motivo de cancelacion')
       return
     }
 
@@ -818,7 +824,7 @@ function DashboardPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            reason,
+            reason: cancelReason,
           }),
         },
       )
@@ -838,7 +844,81 @@ function DashboardPage() {
         ),
       )
       setSelectedCommissionRequest(updatedCommissionRequest)
+      setCancelReason('')
     } catch (error) {
+      setCommissionError(error.message)
+    } finally {
+      setUpdatingCommissionId(null)
+    }
+  }
+
+  async function handleRejectSelectedCommission() {
+    if (!selectedCommissionRequest) {
+      return
+    }
+
+    if (!commissionRejectionReason.trim()) {
+      setCommissionError('Escribe el motivo de rechazo')
+      return
+    }
+
+    const earlyRejectStatuses = [
+      'PENDING',
+      'REVIEWED',
+      'INQUIRY',
+      'PROPOSED',
+      'CLIENT_REJECTED',
+    ]
+
+    if (earlyRejectStatuses.includes(selectedCommissionRequest.status)) {
+      await handleUpdateCommissionStatus(
+        selectedCommissionRequest.id,
+        'REJECTED',
+      )
+      return
+    }
+
+    const previousCancelReason = cancelReason
+    setCancelReason(commissionRejectionReason)
+
+    const token = getAuthToken()
+    setCommissionError('')
+    setUpdatingCommissionId(selectedCommissionRequest.id)
+
+    try {
+      const response = await fetch(
+        `${API_URL}/commissions/${selectedCommissionRequest.id}/cancel`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            reason: commissionRejectionReason,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'No se pudo cancelar la comision')
+      }
+
+      const updatedCommissionRequest = await response.json()
+
+      setCommissionRequests((currentRequests) =>
+        currentRequests.map((commissionRequest) =>
+          commissionRequest.id === updatedCommissionRequest.id
+            ? updatedCommissionRequest
+            : commissionRequest,
+        ),
+      )
+      setSelectedCommissionRequest(updatedCommissionRequest)
+      setCommissionRejectionReason('')
+      setCancelReason('')
+    } catch (error) {
+      setCancelReason(previousCancelReason)
       setCommissionError(error.message)
     } finally {
       setUpdatingCommissionId(null)
@@ -873,9 +953,8 @@ function DashboardPage() {
       return
     }
 
-    const reason = window.prompt('Motivo de la disputa')
-
-    if (reason === null) {
+    if (!disputeReason.trim()) {
+      setCommissionError('Escribe el motivo de la disputa')
       return
     }
 
@@ -893,7 +972,7 @@ function DashboardPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            reason,
+            reason: disputeReason,
             evidenceAttachments: disputeEvidenceAttachments,
           }),
         },
@@ -916,6 +995,7 @@ function DashboardPage() {
       setSelectedCommissionRequest(updatedCommissionRequest)
       setDisputeEvidenceAttachments([])
       setDisputeUploadStatus('')
+      setDisputeReason('')
     } catch (error) {
       setCommissionError(error.message)
     } finally {
@@ -996,6 +1076,75 @@ function DashboardPage() {
     }
   }
 
+  async function handleSendCommissionInquiry() {
+    if (!selectedCommissionRequest) {
+      return
+    }
+
+    if (!commissionNoteDraft.trim()) {
+      setCommissionNoteError('Escribe la pregunta antes de enviarla')
+      return
+    }
+
+    const token = getAuthToken()
+    setCommissionNoteError('')
+    setIsSavingCommissionNote(true)
+
+    try {
+      const noteResponse = await fetch(
+        `${API_URL}/commissions/${selectedCommissionRequest.id}/note`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            artistNote: commissionNoteDraft,
+          }),
+        },
+      )
+
+      if (!noteResponse.ok) {
+        const errorData = await noteResponse.json()
+        throw new Error(errorData.message || 'No se pudo guardar la pregunta')
+      }
+
+      const updatedCommissionRequest = await noteResponse.json()
+
+      setCommissionRequests((currentRequests) =>
+        currentRequests.map((commissionRequest) =>
+          commissionRequest.id === updatedCommissionRequest.id
+            ? {
+                ...commissionRequest,
+                ...updatedCommissionRequest,
+                artistNote: commissionNoteDraft,
+              }
+            : commissionRequest,
+        ),
+      )
+      setSelectedCommissionRequest((currentRequest) => ({
+        ...currentRequest,
+        ...updatedCommissionRequest,
+        artistNote: commissionNoteDraft,
+      }))
+      setCommissionNoteDraft('')
+    } catch (error) {
+      setCommissionNoteError(error.message)
+    } finally {
+      setIsSavingCommissionNote(false)
+    }
+  }
+
+  function removeCommissionDeliveryAttachment(attachmentField, url) {
+    setCommissionDeliveryFormData((currentData) => ({
+      ...currentData,
+      [attachmentField]: currentData[attachmentField].filter(
+        (attachment) => attachment.url !== url,
+      ),
+    }))
+  }
+
   function handleSelectedCommissionProposalChange(event) {
     const { name, value } = event.target
 
@@ -1046,11 +1195,11 @@ function DashboardPage() {
   }
 
   function handleClientReviewChange(event) {
-    const { name, value } = event.target
+    const { checked, name, type, value } = event.target
 
     setClientReviewFormData((currentData) => ({
       ...currentData,
-      [name]: value,
+      [name]: type === 'checkbox' ? checked : value,
     }))
   }
 
@@ -1105,6 +1254,47 @@ function DashboardPage() {
     }
   }
 
+  async function handleUpdateReceivedReviewVisibility(review, isPublic) {
+    const token = getAuthToken()
+    setClientReviewError('')
+    setUpdatingReviewVisibilityId(review.id)
+
+    try {
+      const response = await fetch(`${API_URL}/reviews/${review.id}/visibility`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isPublic }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'No se pudo actualizar la review')
+      }
+
+      const updatedReview = await response.json()
+
+      setCommissionRequests((currentRequests) =>
+        currentRequests.map((commissionRequest) =>
+          commissionRequest.id === updatedReview.commissionRequestId
+            ? { ...commissionRequest, review: updatedReview }
+            : commissionRequest,
+        ),
+      )
+      setSelectedCommissionRequest((currentRequest) =>
+        currentRequest?.id === updatedReview.commissionRequestId
+          ? { ...currentRequest, review: updatedReview }
+          : currentRequest,
+      )
+    } catch (error) {
+      setClientReviewError(error.message)
+    } finally {
+      setUpdatingReviewVisibilityId(null)
+    }
+  }
+
   async function handleDeliverCommission() {
     if (!selectedCommissionRequest) {
       return
@@ -1115,6 +1305,13 @@ function DashboardPage() {
     setIsDeliveringCommission(true)
 
     try {
+      if (
+        !commissionDeliveryFormData.finalFileUrl?.trim() &&
+        commissionDeliveryFormData.finalAttachments.length === 0
+      ) {
+        throw new Error('Debes adjuntar el archivo final privado antes de entregar')
+      }
+
       const response = await fetch(
         `${API_URL}/commissions/${selectedCommissionRequest.id}/delivery`,
         {
@@ -1215,9 +1412,6 @@ function DashboardPage() {
             ),
             extraRevisionPrice:
               commissionProposalFormData.extraRevisionPrice || '',
-            cancellationRetentionPercent: Number(
-              commissionProposalFormData.cancellationRetentionPercent || 0,
-            ),
           }),
         },
       )
@@ -1241,11 +1435,10 @@ function DashboardPage() {
 
       setSelectedCommissionRequest(updatedCommissionRequest)
       setCommissionProposalFormData({
-        artistResponse: '',
-        quotedPrice: '',
-        includedRevisions: '1',
-        extraRevisionPrice: '',
-        cancellationRetentionPercent: '0',
+        artistResponse: updatedCommissionRequest.artistResponse || '',
+        quotedPrice: updatedCommissionRequest.quotedPrice || '',
+        includedRevisions: String(updatedCommissionRequest.includedRevisions ?? 1),
+        extraRevisionPrice: updatedCommissionRequest.extraRevisionPrice || '',
       })
     } catch (error) {
       setCommissionProposalError(error.message)
@@ -1260,7 +1453,15 @@ function DashboardPage() {
       return
     }
 
-    await handleUpdateCommissionStatus(selectedCommissionRequest.id, 'ACCEPTED')
+    await handleUpdateCommissionStatus(selectedCommissionRequest.id, 'ACCEPTED', {
+      quotedPrice:
+        commissionProposalFormData.quotedPrice ||
+        selectedCommissionRequest.quotedPrice ||
+        selectedCommissionRequest.budget ||
+        '',
+      includedRevisions: Number(commissionProposalFormData.includedRevisions || 1),
+      extraRevisionPrice: commissionProposalFormData.extraRevisionPrice || '',
+    })
   }
 
   async function handleProfileImageUpload(event) {
@@ -1708,9 +1909,9 @@ function DashboardPage() {
     {
       value: 'NEW',
       label: 'Nuevas',
-      statuses: ['PENDING', 'REVIEWED'],
+      statuses: ['PENDING', 'REVIEWED', 'INQUIRY'],
       count: commissionRequests.filter((commissionRequest) =>
-        ['PENDING', 'REVIEWED'].includes(commissionRequest.status),
+        ['PENDING', 'REVIEWED', 'INQUIRY'].includes(commissionRequest.status),
       ).length,
     },
     {
@@ -1788,10 +1989,27 @@ function DashboardPage() {
   const canDeliverSelectedCommission =
     ['IN_PROGRESS', 'REVISION_REQUESTED'].includes(
       selectedCommissionRequest?.status,
-    )
+    ) ||
+    (selectedCommissionRequest?.status === 'INQUIRY' &&
+      selectedCommissionPayment?.status === 'PAID')
   const selectedPaymentCheckoutUrl = selectedCommissionPayment?.providerOrderId
     ? `${window.location.origin}/payments/checkout/${selectedCommissionPayment.providerOrderId}`
     : ''
+  const canEditSelectedCommissionProposal =
+    selectedCommissionRequest &&
+    ['PENDING', 'REVIEWED', 'INQUIRY', 'PROPOSED', 'CLIENT_REJECTED'].includes(
+      selectedCommissionRequest.status,
+    )
+  const canEditSelectedCommissionTerms =
+    selectedCommissionRequest &&
+    ['ACCEPTED', 'PAYMENT_PENDING'].includes(selectedCommissionRequest.status)
+  const isSelectedCommissionDirectAccept =
+    selectedCommissionRequest &&
+    selectedCommissionRequest.quotedPrice &&
+    !selectedCommissionRequest.artistResponse &&
+    ['ACCEPTED', 'PAYMENT_PENDING', 'IN_PROGRESS', 'DELIVERED', 'COMPLETED'].includes(
+      selectedCommissionRequest.status,
+    )
 
   return (
     <main className="min-h-screen bg-zinc-950 px-6 py-8 text-white">
@@ -2226,6 +2444,7 @@ function DashboardPage() {
                         </div>
                       </div>
 
+                      {/* ponytail: modality display paused until onsite/remote projects have separate rules.
                       {commissionRequest.serviceMode && (
                         <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                           Modalidad:{' '}
@@ -2233,7 +2452,7 @@ function DashboardPage() {
                             {getServiceModeLabel(commissionRequest.serviceMode)}
                           </span>
                         </p>
-                      )}
+                      )} */}
 
                       <p className="mt-4 whitespace-pre-line text-sm leading-6 text-zinc-300">
                         {commissionRequest.message}
@@ -2414,9 +2633,10 @@ function DashboardPage() {
                                 {profileFormData.servicePriceRange}
                               </span>
                             )}
+                            {/* ponytail: serviceMode stays in data, hidden in UI for now.
                             <span className="rounded-md border border-zinc-700 px-3 py-2">
                               {getServiceModeLabel(profileFormData.serviceMode)}
-                            </span>
+                            </span> */}
                             {profileFormData.serviceArea && (
                               <span className="rounded-md border border-zinc-700 px-3 py-2">
                                 {profileFormData.serviceArea}
@@ -2586,6 +2806,7 @@ function DashboardPage() {
                       />
                     </div>
 
+                    {/* ponytail: keep backend default serviceMode, hide choice until this flow is defined.
                     <div>
                       <label className="text-sm font-medium text-zinc-300">
                         Modalidad
@@ -2600,7 +2821,7 @@ function DashboardPage() {
                         <option value="IN_PERSON">Presencial</option>
                         <option value="BOTH">Online y presencial</option>
                       </select>
-                    </div>
+                    </div> */}
 
                     <div>
                       <label className="text-sm font-medium text-zinc-300">
@@ -2736,7 +2957,7 @@ function DashboardPage() {
       </section>
 
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 px-4 py-8">
+        <div className="dialog-motion fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 px-4 py-8">
           <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -2848,7 +3069,7 @@ function DashboardPage() {
       )}
 
       {selectedCommissionRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 px-4 py-8">
+        <div className="dialog-motion fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 px-4 py-8">
           <div className="max-h-full w-full max-w-2xl overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -2916,7 +3137,8 @@ function DashboardPage() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-4 grid gap-4 sm:grid-cols-1">
+              {/* ponytail: modality display paused until onsite/remote projects have separate rules.
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   Modalidad
@@ -2927,6 +3149,7 @@ function DashboardPage() {
                     : 'No especificada'}
                 </p>
               </div>
+              */}
 
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -2946,6 +3169,17 @@ function DashboardPage() {
                 {selectedCommissionRequest.message}
               </p>
             </div>
+
+            {selectedCommissionRequest.clientNote && (
+              <div className="mt-6 rounded-lg border border-violet-400/30 bg-violet-400/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">
+                  Nota del cliente
+                </p>
+                <p className="mt-3 whitespace-pre-line text-sm leading-7 text-zinc-200">
+                  {selectedCommissionRequest.clientNote}
+                </p>
+              </div>
+            )}
 
             {selectedCommissionRequest.attachments?.some(
               (attachment) => attachment.type === 'CLIENT_REFERENCE',
@@ -3007,6 +3241,25 @@ function DashboardPage() {
               </div>
             )}
 
+            {[
+              'CANCELLED_BY_CLIENT',
+              'CANCELLED_BY_ARTIST',
+            ].includes(selectedCommissionRequest.status) && (
+              <div className="mt-6 rounded-lg border border-zinc-700 bg-zinc-950 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                  Cancelacion
+                </p>
+                <p className="mt-2 text-sm text-zinc-300">
+                  Retencion aplicada: {selectedCommissionRequest.cancellationRetentionPercent || 0}%
+                </p>
+                {selectedCommissionRequest.cancellationReason && (
+                  <p className="mt-2 whitespace-pre-line text-sm text-zinc-400">
+                    {selectedCommissionRequest.cancellationReason}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -3014,19 +3267,47 @@ function DashboardPage() {
                     Nota interna
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">
-                    Esta nota solo la ve el artista. Sirve para recordar ideas,
-                    precios o siguientes pasos.
+                    Guarda una nota privada o enviala como consulta al cliente
+                    si necesitas aclarar referencias antes de avanzar.
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSaveCommissionNote}
-                  disabled={isSavingCommissionNote}
-                  className="rounded-md bg-violet-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingCommissionNote ? 'Guardando...' : 'Guardar nota'}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveCommissionNote}
+                    disabled={
+                      isSavingCommissionNote ||
+                      [
+                        'COMPLETED',
+                        'REJECTED',
+                        'CANCELLED_BY_CLIENT',
+                        'CANCELLED_BY_ARTIST',
+                        'DISPUTED',
+                      ].includes(selectedCommissionRequest.status)
+                    }
+                    className="rounded-md bg-violet-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSavingCommissionNote ? 'Guardando...' : 'Guardar nota'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendCommissionInquiry}
+                    disabled={
+                      isSavingCommissionNote ||
+                      [
+                        'COMPLETED',
+                        'REJECTED',
+                        'CANCELLED_BY_CLIENT',
+                        'CANCELLED_BY_ARTIST',
+                        'DISPUTED',
+                      ].includes(selectedCommissionRequest.status)
+                    }
+                    className="rounded-md border border-purple-400/40 px-4 py-2 text-sm font-semibold text-purple-200 transition hover:bg-purple-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Enviar consulta
+                  </button>
+                </div>
               </div>
 
               {commissionNoteError && (
@@ -3049,8 +3330,15 @@ function DashboardPage() {
               <textarea
                 value={commissionNoteDraft}
                 onChange={handleSelectedCommissionNoteChange}
+                disabled={[
+                  'COMPLETED',
+                  'REJECTED',
+                  'CANCELLED_BY_CLIENT',
+                  'CANCELLED_BY_ARTIST',
+                  'DISPUTED',
+                ].includes(selectedCommissionRequest.status)}
                 rows="4"
-                placeholder="Escribe una nota nueva o modifica la nota actual."
+                placeholder="Escribe una nota privada o una pregunta para el cliente."
                 className="mt-4 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
               />
             </div>
@@ -3059,10 +3347,16 @@ function DashboardPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
-                    Respuesta y cotizacion
+                    {canEditSelectedCommissionProposal
+                      ? 'Contrapropuesta'
+                      : 'Terminos de la comision'}
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">
-                    Esta propuesta se enviara al cliente para que pueda aceptarla o rechazarla.
+                    {canEditSelectedCommissionProposal
+                      ? 'Estos terminos se enviaran al cliente para que pueda aceptarlos o rechazarlos.'
+                      : canEditSelectedCommissionTerms
+                        ? 'Puedes ajustar cambios incluidos y cobro extra antes de generar o completar el pago.'
+                        : 'La comision ya fue aceptada. La contrapropuesta queda deshabilitada.'}
                   </p>
                 </div>
               </div>
@@ -3077,7 +3371,9 @@ function DashboardPage() {
                 selectedCommissionRequest.artistResponse) && (
                 <div className="mt-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
-                    Propuesta guardada
+                    {isSelectedCommissionDirectAccept
+                      ? 'Aceptada con precio del cliente'
+                      : 'Propuesta guardada'}
                   </p>
                   {selectedCommissionRequest.quotedPrice && (
                     <p className="mt-2 text-sm font-semibold text-white">
@@ -3094,94 +3390,87 @@ function DashboardPage() {
                     incluidos · Extra:{' '}
                     {selectedCommissionRequest.extraRevisionPrice ||
                       'No definido'}{' '}
-                    · Retencion:{' '}
-                    {selectedCommissionRequest.cancellationRetentionPercent ??
-                      0}
-                    %
                   </p>
                 </div>
               )}
 
-              <div className="mt-4">
-                <label className="text-sm font-medium text-zinc-300">
-                  Precio o rango estimado
-                </label>
-                <input
-                  type="text"
-                  name="quotedPrice"
-                  value={commissionProposalFormData.quotedPrice}
-                  onChange={handleSelectedCommissionProposalChange}
-                  placeholder="Ejemplo: L 2500, $150 o A negociar"
-                  className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
-                />
-              </div>
+              {(canEditSelectedCommissionProposal || canEditSelectedCommissionTerms) && (
+                <>
+                  {canEditSelectedCommissionProposal && (
+                    <div className="mt-4">
+                    <label className="text-sm font-medium text-zinc-300">
+                      Precio o rango estimado
+                    </label>
+                    <input
+                      type="text"
+                      name="quotedPrice"
+                      value={commissionProposalFormData.quotedPrice}
+                      onChange={handleSelectedCommissionProposalChange}
+                      placeholder="Ejemplo: L 2500, $150 o A negociar"
+                      className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                  )}
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="text-sm font-medium text-zinc-300">
-                    Cambios incluidos
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    name="includedRevisions"
-                    value={commissionProposalFormData.includedRevisions}
-                    onChange={handleSelectedCommissionProposalChange}
-                    className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-zinc-300">
-                    Cobro extra por cambio
-                  </label>
-                  <input
-                    type="text"
-                    name="extraRevisionPrice"
-                    value={commissionProposalFormData.extraRevisionPrice}
-                    onChange={handleSelectedCommissionProposalChange}
-                    placeholder="Ej. 25 USD"
-                    className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-zinc-300">
-                    Retencion si cancela cliente
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    name="cancellationRetentionPercent"
-                    value={
-                      commissionProposalFormData.cancellationRetentionPercent
-                    }
-                    onChange={handleSelectedCommissionProposalChange}
-                    className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
-                  />
-                </div>
-              </div>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium text-zinc-300">
+                        Cambios incluidos
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        name="includedRevisions"
+                        value={commissionProposalFormData.includedRevisions}
+                        onChange={handleSelectedCommissionProposalChange}
+                        className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-zinc-300">
+                        Cobro extra por cambio
+                      </label>
+                      <input
+                        type="text"
+                        name="extraRevisionPrice"
+                        value={commissionProposalFormData.extraRevisionPrice}
+                        onChange={handleSelectedCommissionProposalChange}
+                        placeholder="Ej. 25 USD"
+                        className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-zinc-500">
+                    Politica Atrium: 0% sin entrega, 25% si ya hubo una entrega,
+                    50% si ya hubo mas de una ronda de entrega/revision.
+                  </p>
 
-              <div className="mt-4">
-                <label className="text-sm font-medium text-zinc-300">
-                  Respuesta inicial para el cliente
-                </label>
-                <textarea
-                  name="artistResponse"
-                  value={commissionProposalFormData.artistResponse}
-                  onChange={handleSelectedCommissionProposalChange}
-                  rows="4"
-                  placeholder="Ejemplo: Puedo trabajar esta pieza en dos semanas. Necesitaria referencias visuales y confirmacion del formato final."
-                  className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
-                />
-              </div>
+                  {canEditSelectedCommissionProposal && (
+                    <div className="mt-4">
+                    <label className="text-sm font-medium text-zinc-300">
+                      Respuesta inicial para el cliente
+                    </label>
+                    <textarea
+                      name="artistResponse"
+                      value={commissionProposalFormData.artistResponse}
+                      onChange={handleSelectedCommissionProposalChange}
+                      rows="4"
+                      placeholder="Ejemplo: Puedo trabajar esta pieza en dos semanas. Necesitaria referencias visuales y confirmacion del formato final."
+                      className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-red-400">
-                Motivo de rechazo
+                Motivo de rechazo o cancelacion
               </p>
               <p className="mt-1 text-sm text-zinc-500">
-                Este mensaje se enviara al cliente si decides rechazar la solicitud.
+                Antes de aceptar se marca como rechazada. Si ya fue aceptada o
+                pagada, se cancela con este motivo.
               </p>
               <textarea
                 value={commissionRejectionReason}
@@ -3360,7 +3649,7 @@ function DashboardPage() {
                   value={commissionDeliveryFormData.finalFileUrl}
                   onChange={handleSelectedCommissionDeliveryChange}
                   disabled={!canDeliverSelectedCommission}
-                  placeholder="Link del archivo final privado"
+                  placeholder="Link del archivo final privado requerido, o adjunta archivo abajo"
                   className="mt-3 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400 disabled:opacity-60"
                 />
 
@@ -3404,23 +3693,55 @@ function DashboardPage() {
                 )}
 
                 {[
-                  ...commissionDeliveryFormData.previewAttachments,
-                  ...commissionDeliveryFormData.finalAttachments,
+                  ...commissionDeliveryFormData.previewAttachments.map((attachment) => ({
+                    ...attachment,
+                    field: 'previewAttachments',
+                    label: 'Preview',
+                  })),
+                  ...commissionDeliveryFormData.finalAttachments.map((attachment) => ({
+                    ...attachment,
+                    field: 'finalAttachments',
+                    label: 'Final privado',
+                  })),
                 ].length > 0 && (
                   <div className="mt-3 grid gap-2 text-sm text-zinc-300">
                     {[
-                      ...commissionDeliveryFormData.previewAttachments,
-                      ...commissionDeliveryFormData.finalAttachments,
+                      ...commissionDeliveryFormData.previewAttachments.map((attachment) => ({
+                        ...attachment,
+                        field: 'previewAttachments',
+                        label: 'Preview',
+                      })),
+                      ...commissionDeliveryFormData.finalAttachments.map((attachment) => ({
+                        ...attachment,
+                        field: 'finalAttachments',
+                        label: 'Final privado',
+                      })),
                     ].map((attachment) => (
-                      <a
+                      <div
                         key={attachment.url}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="truncate rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 hover:border-violet-400"
+                        className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2"
                       >
-                        {attachment.name || attachment.url}
-                      </a>
+                        <a
+                          href={attachment.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate hover:text-violet-300"
+                        >
+                          {attachment.label}: {attachment.name || attachment.url}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeCommissionDeliveryAttachment(
+                              attachment.field,
+                              attachment.url,
+                            )
+                          }
+                          className="shrink-0 text-xs font-semibold text-red-300 hover:text-red-200"
+                        >
+                          Quitar
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -3519,6 +3840,49 @@ function DashboardPage() {
             )}
 
             {selectedCommissionRequest.status === 'COMPLETED' &&
+              selectedCommissionRequest.review && (
+                <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-400">
+                    Review recibida del cliente
+                  </p>
+                  <div className="mt-3 rounded-md border border-zinc-800 bg-zinc-900 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {selectedCommissionRequest.review.rating}/5
+                        </p>
+                        <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">
+                          {selectedCommissionRequest.review.comment}
+                        </p>
+                        <p className="mt-2 text-xs text-zinc-500">
+                          La calificacion siempre cuenta en tu promedio. El
+                          comentario solo aparece en tu perfil si lo publicas.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={
+                          updatingReviewVisibilityId ===
+                          selectedCommissionRequest.review.id
+                        }
+                        onClick={() =>
+                          handleUpdateReceivedReviewVisibility(
+                            selectedCommissionRequest.review,
+                            !selectedCommissionRequest.review.isPublic,
+                          )
+                        }
+                        className="rounded-md border border-violet-400/40 px-4 py-2 text-sm font-semibold text-violet-200 hover:bg-violet-400/10 disabled:opacity-60"
+                      >
+                        {selectedCommissionRequest.review.isPublic
+                          ? 'Ocultar comentario'
+                          : 'Publicar comentario'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {selectedCommissionRequest.status === 'COMPLETED' &&
               selectedCommissionRequest.clientUserId && (
                 <form
                   className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4"
@@ -3552,9 +3916,11 @@ function DashboardPage() {
                                 review.artistProfile?.fullName ||
                                 'Artista'}
                             </p>
-                            <p className="mt-1 whitespace-pre-line">
-                              {review.comment}
-                            </p>
+                            {review.isPublic && (
+                              <p className="mt-1 whitespace-pre-line">
+                                {review.comment}
+                              </p>
+                            )}
                           </div>
                         ),
                       )}
@@ -3622,7 +3988,6 @@ function DashboardPage() {
               )}
 
             {![
-              'COMPLETED',
               'REJECTED',
               'CANCELLED_BY_CLIENT',
               'CANCELLED_BY_ARTIST',
@@ -3636,6 +4001,13 @@ function DashboardPage() {
                   Abre una disputa si no se puede resolver la entrega, pago o
                   cancelacion directamente con el cliente.
                 </p>
+                <textarea
+                  value={disputeReason}
+                  onChange={(event) => setDisputeReason(event.target.value)}
+                  rows="3"
+                  placeholder="Motivo de la disputa"
+                  className="mt-3 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-red-400"
+                />
                 <div className="mt-3 flex flex-wrap gap-3">
                   <label className="cursor-pointer rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400">
                     Adjuntar evidencia
@@ -3681,6 +4053,21 @@ function DashboardPage() {
             )}
 
             <div className="mt-6 flex flex-wrap justify-end gap-3">
+              {![
+                'COMPLETED',
+                'REJECTED',
+                'CANCELLED_BY_CLIENT',
+                'CANCELLED_BY_ARTIST',
+                'DISPUTED',
+              ].includes(selectedCommissionRequest.status) && (
+                <textarea
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                  rows="2"
+                  placeholder="Motivo de cancelacion"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-red-400"
+                />
+              )}
               <button
                 type="button"
                 disabled={
@@ -3702,9 +4089,8 @@ function DashboardPage() {
                 type="button"
                 disabled={
                   updatingCommissionId === selectedCommissionRequest.id ||
-                  !['PENDING', 'REVIEWED', 'CLIENT_REJECTED'].includes(
-                    selectedCommissionRequest.status,
-                  ) ||
+                  (!canEditSelectedCommissionProposal &&
+                    !canEditSelectedCommissionTerms) ||
                   isSavingCommissionProposal
                 }
                 onClick={handleAcceptCommissionRequest}
@@ -3712,14 +4098,22 @@ function DashboardPage() {
               >
                 {isSavingCommissionProposal
                   ? 'Enviando...'
-                  : 'Enviar propuesta'}
+                  : canEditSelectedCommissionTerms
+                    ? 'Guardar terminos'
+                    : 'Enviar contrapropuesta'}
               </button>
 
               <button
                 type="button"
                 disabled={
                   updatingCommissionId === selectedCommissionRequest.id ||
-                  !['PENDING', 'REVIEWED', 'CLIENT_ACCEPTED'].includes(
+                  ![
+                    'PENDING',
+                    'REVIEWED',
+                    'INQUIRY',
+                    'CLIENT_ACCEPTED',
+                    'CLIENT_REJECTED',
+                  ].includes(
                     selectedCommissionRequest.status,
                   )
                 }
@@ -3733,19 +4127,18 @@ function DashboardPage() {
                 type="button"
                 disabled={
                   updatingCommissionId === selectedCommissionRequest.id ||
-                  !['PENDING', 'REVIEWED', 'PROPOSED', 'CLIENT_REJECTED'].includes(
-                    selectedCommissionRequest.status,
-                  )
-                }
-                onClick={() =>
-                  handleUpdateCommissionStatus(
-                    selectedCommissionRequest.id,
+                  [
+                    'COMPLETED',
                     'REJECTED',
-                  )
+                    'CANCELLED_BY_CLIENT',
+                    'CANCELLED_BY_ARTIST',
+                    'DISPUTED',
+                  ].includes(selectedCommissionRequest.status)
                 }
+                onClick={handleRejectSelectedCommission}
                 className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-red-400 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Rechazar
+                Rechazar / cancelar
               </button>
 
               <button

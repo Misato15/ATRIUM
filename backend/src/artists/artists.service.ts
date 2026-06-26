@@ -105,13 +105,30 @@ export class ArtistsService {
     topLikedWork,
   };
 }
-  findAll() {
+  findAll(search?: string) {
+    const searchTerm = search?.trim();
+
     return this.prisma.artistProfile.findMany({
       where: {
         isHidden: false,
         user: {
           isSuspended: false,
         },
+        ...(searchTerm
+          ? {
+              OR: [
+                { fullName: { contains: searchTerm } },
+                { artistName: { contains: searchTerm } },
+                { bio: { contains: searchTerm } },
+                { location: { contains: searchTerm } },
+                { interests: { contains: searchTerm } },
+                { commissionTypes: { contains: searchTerm } },
+                { serviceDescription: { contains: searchTerm } },
+                { serviceArea: { contains: searchTerm } },
+                { category: { is: { name: { contains: searchTerm } } } },
+              ],
+            }
+          : {}),
       },
       orderBy: {
         createdAt: 'desc',
@@ -160,7 +177,13 @@ export class ArtistsService {
       throw new NotFoundException('Artista no encontrado');
     }
 
-    return artist;
+    return {
+      ...artist,
+      reviews: artist.reviews.map((review) => ({
+        ...review,
+        comment: review.isPublic ? review.comment : '',
+      })),
+    };
   }
   async updateMyProfile(
   userId: number,

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UpdateArtistProfileDto } from './dto/update-artist-profile.dto';
 import { ArtistsService } from './artists.service';
@@ -9,8 +19,8 @@ export class ArtistsController {
   constructor(private readonly artistsService: ArtistsService) {}
 
   @Get()
-  findAll() {
-    return this.artistsService.findAll();
+  findAll(@Query('search') search?: string) {
+    return this.artistsService.findAll(search);
   }
 
   @UseGuards(JwtAuthGuard)

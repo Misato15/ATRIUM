@@ -96,14 +96,20 @@ export class CloudinaryService {
     attachmentName?: string | null;
   }) {
     const expiresAt = Math.floor(Date.now() / 1000 + 10 * 60);
+    const format = this.getFormat(input.attachmentName || input.publicId);
 
-    return cloudinary.url(input.publicId, {
+    return cloudinary.utils.private_download_url(input.publicId, format, {
       resource_type: input.resourceType || 'raw',
       type: input.deliveryType || 'authenticated',
-      secure: true,
-      sign_url: true,
       expires_at: expiresAt,
-      flags: 'attachment',
+      attachment: true,
     });
+  }
+
+  private getFormat(fileName: string) {
+    const cleanName = fileName.split('?')[0];
+    const dotIndex = cleanName.lastIndexOf('.');
+
+    return dotIndex >= 0 ? cleanName.slice(dotIndex + 1) : '';
   }
 }

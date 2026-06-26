@@ -54,12 +54,13 @@ export class ReviewsService {
         clientName: commissionRequest.clientName,
         rating,
         comment,
+        isPublic: false,
       },
     });
   }
 
-  findByArtist(artistProfileId: number) {
-    return this.prisma.review.findMany({
+  async findByArtist(artistProfileId: number) {
+    const reviews = await this.prisma.review.findMany({
       where: {
         artistProfileId,
       },
@@ -67,6 +68,11 @@ export class ReviewsService {
         createdAt: 'desc',
       },
     });
+
+    return reviews.map((review) => ({
+      ...review,
+      comment: review.isPublic ? review.comment : '',
+    }));
   }
 
   async createClientReview(artistUserId: number, createReviewDto: CreateReviewDto) {
@@ -120,6 +126,39 @@ export class ReviewsService {
         commissionRequestId: commissionRequest.id,
         rating,
         comment,
+        isPublic: false,
+      },
+    });
+  }
+
+  async updateArtistReviewVisibility(
+    artistUserId: number,
+    reviewId: number,
+    isPublic: boolean,
+  ) {
+    const review = await this.prisma.review.findUnique({
+      where: {
+        id: reviewId,
+      },
+      include: {
+        artistProfile: true,
+      },
+    });
+
+    if (!review) {
+      throw new NotFoundException('Review no encontrada');
+    }
+
+    if (review.artistProfile.userId !== artistUserId) {
+      throw new ForbiddenException('No puedes modificar esta review');
+    }
+
+    return this.prisma.review.update({
+      where: {
+        id: reviewId,
+      },
+      data: {
+        isPublic,
       },
     });
   }

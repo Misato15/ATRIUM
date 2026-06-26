@@ -12,6 +12,7 @@ import CommissionProposalPage from './pages/CommissionProposalPage'
 import CommissionDeliveryPage from './pages/CommissionDeliveryPage'
 import JobsPage from './pages/JobsPage'
 import MarketplacePage from './pages/MarketplacePage'
+import DigitalProductDetailPage from './pages/DigitalProductDetailPage'
 import DigitalProductCheckoutPage from './pages/DigitalProductCheckoutPage'
 import AdminPage from './pages/AdminPage'
 import Navbar from './components/Navbar'
@@ -28,6 +29,7 @@ function App() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/marketplace/products/:id" element={<DigitalProductDetailPage />} />
         <Route path="/marketplace/checkout/:providerOrderId" element={<DigitalProductCheckoutPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />

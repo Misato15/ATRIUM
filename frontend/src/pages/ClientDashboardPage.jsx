@@ -20,6 +20,7 @@ function getCommissionStatusLabel(status) {
   const labels = {
     PENDING: 'Pendiente',
     REVIEWED: 'En revision',
+    INQUIRY: 'Consulta del artista',
     PROPOSED: 'Propuesta',
     CLIENT_ACCEPTED: 'Aceptada por ti',
     CLIENT_REJECTED: 'Rechazada por ti',
@@ -43,6 +44,7 @@ function getCommissionStatusClassName(status) {
     ALL: 'border-violet-400/40 bg-violet-400/10 text-violet-200',
     PENDING: 'border-amber-400/40 bg-amber-400/10 text-amber-200',
     REVIEWED: 'border-sky-400/40 bg-sky-400/10 text-sky-200',
+    INQUIRY: 'border-purple-400/40 bg-purple-400/10 text-purple-200',
     PROPOSED: 'border-indigo-400/40 bg-indigo-400/10 text-indigo-200',
     CLIENT_ACCEPTED: 'border-lime-400/40 bg-lime-400/10 text-lime-200',
     CLIENT_REJECTED: 'border-orange-400/40 bg-orange-400/10 text-orange-200',
@@ -137,6 +139,18 @@ function ClientDashboardPage() {
   const [isPreparingFinalDownload, setIsPreparingFinalDownload] = useState(false)
   const [disputeEvidenceAttachments, setDisputeEvidenceAttachments] = useState([])
   const [disputeUploadStatus, setDisputeUploadStatus] = useState('')
+  const [cancelReason, setCancelReason] = useState('')
+  const [disputeReason, setDisputeReason] = useState('')
+  const [referenceAttachments, setReferenceAttachments] = useState([])
+  const [referenceUploadStatus, setReferenceUploadStatus] = useState('')
+  const [isSavingReferences, setIsSavingReferences] = useState(false)
+  const [clientNoteDraft, setClientNoteDraft] = useState('')
+  const [isSavingClientNote, setIsSavingClientNote] = useState(false)
+  const [artistReviewFormData, setArtistReviewFormData] = useState({
+    rating: '5',
+    comment: '',
+  })
+  const [isSavingArtistReview, setIsSavingArtistReview] = useState(false)
 
   useEffect(() => {
     async function loadClientDashboard() {
@@ -239,6 +253,7 @@ function ClientDashboardPage() {
     'ALL',
     'PENDING',
     'REVIEWED',
+    'INQUIRY',
     'PROPOSED',
     'PAYMENT_PENDING',
     'IN_PROGRESS',
@@ -252,7 +267,7 @@ function ClientDashboardPage() {
 
   const metrics = useMemo(() => {
     const pendingCount = commissions.filter((commission) =>
-      ['PENDING', 'REVIEWED', 'PROPOSED'].includes(commission.status),
+      ['PENDING', 'REVIEWED', 'INQUIRY', 'PROPOSED'].includes(commission.status),
     ).length
     const activeCount = commissions.filter((commission) =>
       ['CLIENT_ACCEPTED', 'ACCEPTED', 'PAYMENT_PENDING', 'IN_PROGRESS', 'DELIVERED', 'REVISION_REQUESTED', 'DISPUTED'].includes(
@@ -297,6 +312,15 @@ function ClientDashboardPage() {
     setPaymentError('')
     setDisputeEvidenceAttachments([])
     setDisputeUploadStatus('')
+    setCancelReason('')
+    setDisputeReason('')
+    setReferenceAttachments([])
+    setReferenceUploadStatus('')
+    setClientNoteDraft(commission.clientNote || '')
+    setArtistReviewFormData({
+      rating: commission.review?.rating ? String(commission.review.rating) : '5',
+      comment: commission.review?.comment || '',
+    })
   }
 
   async function handleProposalResponse(decision) {
@@ -380,9 +404,8 @@ function ClientDashboardPage() {
       return
     }
 
-    const reason = window.prompt('Motivo de cancelacion')
-
-    if (reason === null) {
+    if (!cancelReason.trim()) {
+      setResponseError('Escribe el motivo de cancelacion')
       return
     }
 
@@ -400,7 +423,7 @@ function ClientDashboardPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            reason,
+            reason: cancelReason,
           }),
         },
       )
@@ -411,6 +434,7 @@ function ClientDashboardPage() {
       }
 
       syncCommission(await response.json())
+      setCancelReason('')
     } catch (currentError) {
       setResponseError(currentError.message)
     } finally {
@@ -526,14 +550,164 @@ function ClientDashboardPage() {
     }
   }
 
+  async function handleReferenceUpload(event) {
+    const files = Array.from(event.target.files || [])
+
+    if (files.length === 0) {
+      return
+    }
+
+    setReferenceUploadStatus('Subiendo referencias...')
+
+    try {
+      const uploadedAttachments = await uploadAttachments(files)
+      setReferenceAttachments((currentAttachments) => [
+        ...currentAttachments,
+        ...uploadedAttachments,
+      ])
+      setReferenceUploadStatus('Referencias listas para enviar')
+    } catch (currentError) {
+      setReferenceUploadStatus(currentError.message)
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  async function handleSaveReferences() {
+    if (!selectedCommission || referenceAttachments.length === 0) {
+      return
+    }
+
+    const token = getAuthToken()
+    setIsSavingReferences(true)
+    setResponseError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/commissions/client/${selectedCommission.id}/references`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            referenceAttachments,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'No se pudieron enviar referencias')
+      }
+
+      syncCommission(await response.json())
+      setReferenceAttachments([])
+      setReferenceUploadStatus('')
+    } catch (currentError) {
+      setResponseError(currentError.message)
+    } finally {
+      setIsSavingReferences(false)
+    }
+  }
+
+  async function handleSaveClientNote() {
+    if (!selectedCommission) {
+      return
+    }
+
+    const token = getAuthToken()
+    setIsSavingClientNote(true)
+    setResponseError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/commissions/client/${selectedCommission.id}/note`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            clientNote: clientNoteDraft,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'No se pudo guardar la nota')
+      }
+
+      const updatedCommission = await response.json()
+      syncCommission(updatedCommission)
+      setClientNoteDraft('')
+      
+    } catch (currentError) {
+      setResponseError(currentError.message)
+    } finally {
+      setIsSavingClientNote(false)
+    }
+  }
+
+  function handleArtistReviewChange(event) {
+    const { checked, name, type, value } = event.target
+
+    setArtistReviewFormData((currentData) => ({
+      ...currentData,
+      [name]: type === 'checkbox' ? checked : value,
+    }))
+  }
+
+  async function handleSaveArtistReview(event) {
+    event.preventDefault()
+
+    if (!selectedCommission) {
+      return
+    }
+
+    setIsSavingArtistReview(true)
+    setResponseError('')
+
+    try {
+      const response = await fetch(`${API_URL}/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          commissionRequestId: selectedCommission.id,
+          rating: Number(artistReviewFormData.rating),
+          comment: artistReviewFormData.comment,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'No se pudo guardar la review')
+      }
+
+      const review = await response.json()
+      syncCommission({
+        ...selectedCommission,
+        review,
+      })
+    } catch (currentError) {
+      setResponseError(currentError.message)
+    } finally {
+      setIsSavingArtistReview(false)
+    }
+  }
+
   async function handleOpenDispute() {
     if (!selectedCommission) {
       return
     }
 
-    const reason = window.prompt('Motivo de la disputa')
-
-    if (reason === null) {
+    if (!disputeReason.trim()) {
+      setResponseError('Escribe el motivo de la disputa')
       return
     }
 
@@ -551,7 +725,7 @@ function ClientDashboardPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            reason,
+            reason: disputeReason,
             evidenceAttachments: disputeEvidenceAttachments,
           }),
         },
@@ -565,6 +739,7 @@ function ClientDashboardPage() {
       syncCommission(await response.json())
       setDisputeEvidenceAttachments([])
       setDisputeUploadStatus('')
+      setDisputeReason('')
     } catch (currentError) {
       setResponseError(currentError.message)
     } finally {
@@ -741,7 +916,7 @@ function ClientDashboardPage() {
         )}
 
         {isDetailModalOpen && selectedCommission && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+          <div className="dialog-motion fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
               <section className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -844,6 +1019,148 @@ function ClientDashboardPage() {
                   </div>
                 )}
 
+                {selectedCommission.artistNote && (
+                  <div className="mt-6 rounded-lg border border-purple-400/30 bg-purple-400/10 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-purple-300">
+                      Nota del artista
+                    </p>
+                    <p className="mt-3 whitespace-pre-line text-sm leading-7 text-zinc-200">
+                      {selectedCommission.artistNote}
+                    </p>
+                  </div>
+                )}
+
+                {[
+                  'CLIENT_ACCEPTED',
+                  'ACCEPTED',
+                  'PAYMENT_PENDING',
+                  'IN_PROGRESS',
+                  'INQUIRY',
+                ].includes(selectedCommission.status) && (
+                  <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-400">
+                      Enviar referencias al artista
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      Adjunta imagenes, links exportados o archivos utiles antes
+                      de que el artista trabaje.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <label className="cursor-pointer rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-violet-400">
+                        Adjuntar referencias
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleReferenceUpload}
+                          className="sr-only"
+                        />
+                      </label>
+                      <Button
+                        variant="secondary"
+                        disabled={
+                          isSavingReferences ||
+                          referenceAttachments.length === 0
+                        }
+                        onClick={handleSaveReferences}
+                      >
+                        {isSavingReferences ? 'Enviando...' : 'Enviar'}
+                      </Button>
+                    </div>
+                    {referenceUploadStatus && (
+                      <p className="mt-3 text-sm text-violet-300">
+                        {referenceUploadStatus}
+                      </p>
+                    )}
+                    {referenceAttachments.length > 0 && (
+                      <div className="mt-3 grid gap-2">
+                        {referenceAttachments.map((attachment) => (
+                          <a
+                            key={attachment.url}
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
+                          >
+                            {attachment.name || attachment.url}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-400">
+                    Nota para el artista
+                  </p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                    Usa esto para dudas, avisos o una contraoferta antes de
+                    aceptar/rechazar la propuesta.
+                  </p>
+
+                  {selectedCommission.clientNote && (
+                    <div className="mt-3 rounded-md border border-violet-400/30 bg-violet-400/10 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-violet-300">
+                        Nota guardada
+                      </p>
+                      <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">
+                        {selectedCommission.clientNote}
+                      </p>
+                    </div>
+                  )}
+
+                  <textarea
+                    value={clientNoteDraft}
+                    onChange={(event) => setClientNoteDraft(event.target.value)}
+                    disabled={[
+                      'COMPLETED',
+                      'REJECTED',
+                      'CANCELLED_BY_CLIENT',
+                      'CANCELLED_BY_ARTIST',
+                      'DISPUTED',
+                    ].includes(selectedCommission.status)}
+                    rows="3"
+                    placeholder="Ej. Pagaré en 3 días, tengo una duda sobre el formato, etc."
+                    className="mt-4 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
+                  />
+                  <Button
+                    className="mt-3"
+                    variant="secondary"
+                    disabled={
+                      isSavingClientNote ||
+                      [
+                        'COMPLETED',
+                        'REJECTED',
+                        'CANCELLED_BY_CLIENT',
+                        'CANCELLED_BY_ARTIST',
+                        'DISPUTED',
+                      ].includes(selectedCommission.status)
+                    }
+                    onClick={handleSaveClientNote}
+                  >
+                    {isSavingClientNote ? 'Guardando...' : 'Guardar nota'}
+                  </Button>
+                </div>
+
+                {[
+                  'CANCELLED_BY_CLIENT',
+                  'CANCELLED_BY_ARTIST',
+                ].includes(selectedCommission.status) && (
+                  <div className="mt-6 rounded-lg border border-zinc-700 bg-zinc-950 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      Cancelacion
+                    </p>
+                    <p className="mt-2 text-sm text-zinc-300">
+                      Retencion aplicada: {selectedCommission.cancellationRetentionPercent || 0}%
+                    </p>
+                    {selectedCommission.cancellationReason && (
+                      <p className="mt-2 whitespace-pre-line text-sm text-zinc-400">
+                        {selectedCommission.cancellationReason}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {selectedCommission.disputes?.length > 0 && (
                   <div className="mt-6 rounded-lg border border-red-400/30 bg-red-400/10 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-red-300">
@@ -897,12 +1214,15 @@ function ClientDashboardPage() {
                       Cambios incluidos:{' '}
                       {selectedCommission.includedRevisions ?? 1} · Usados:{' '}
                       {selectedCommission.usedRevisions || 0} · Extra:{' '}
-                      {selectedCommission.extraRevisionPrice || 'No definido'} ·
-                      Retencion si cancelas tras entrega:{' '}
-                      {selectedCommission.cancellationRetentionPercent ?? 0}%
+                      {selectedCommission.extraRevisionPrice || 'No definido'}
+                    </p>
+                    <p className="mt-2 text-xs text-zinc-500">
+                      Politica Atrium por cancelacion del cliente: 0% sin entrega,
+                      25% con una entrega, 50% si ya hubo entrega y revision.
                     </p>
 
-                    {selectedCommission.status === 'PROPOSED' && (
+                    {['PROPOSED', 'INQUIRY'].includes(selectedCommission.status) &&
+                      selectedCommission.quotedPrice && (
                       <div className="mt-5 flex flex-wrap gap-3">
                         <Button
                           disabled={isRespondingProposal}
@@ -993,7 +1313,7 @@ function ClientDashboardPage() {
                       <div className="mt-4">
                         <Button
                           disabled={isPreparingPayment}
-                          onClick={handlePayCommission}
+                          onClick={() => handlePayCommission()}
                         >
                           {isPreparingPayment
                             ? 'Preparando pago...'
@@ -1195,12 +1515,74 @@ function ClientDashboardPage() {
                   </div>
                 )}
 
+                {selectedCommission.status === 'COMPLETED' && (
+                  <form
+                    className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4"
+                    onSubmit={handleSaveArtistReview}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-400">
+                      Review del artista
+                    </p>
+                    <h3 className="mt-2 text-lg font-bold text-white">
+                      Califica a {getArtistDisplayName(selectedCommission.artistProfile)}
+                    </h3>
+
+                    {selectedCommission.review ? (
+                      <div className="mt-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3">
+                        <p className="text-sm font-semibold text-emerald-200">
+                          {selectedCommission.review.rating}/5
+                        </p>
+                        <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">
+                          {selectedCommission.review.comment}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <label className="mt-4 block text-sm font-medium text-zinc-300">
+                          Calificacion
+                        </label>
+                        <select
+                          name="rating"
+                          value={artistReviewFormData.rating}
+                          onChange={handleArtistReviewChange}
+                          className="mt-2 rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
+                        >
+                          <option value="5">5 - Excelente</option>
+                          <option value="4">4 - Muy buena</option>
+                          <option value="3">3 - Buena</option>
+                          <option value="2">2 - Regular</option>
+                          <option value="1">1 - Mala</option>
+                        </select>
+
+                        <textarea
+                          name="comment"
+                          value={artistReviewFormData.comment}
+                          onChange={handleArtistReviewChange}
+                          required
+                          rows="4"
+                          placeholder="Describe calidad, comunicacion y cumplimiento del artista."
+                          className="mt-4 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
+                        />
+
+                        <Button
+                          type="submit"
+                          className="mt-4"
+                          disabled={isSavingArtistReview}
+                        >
+                          {isSavingArtistReview
+                            ? 'Guardando...'
+                            : 'Guardar review'}
+                        </Button>
+                      </>
+                    )}
+                  </form>
+                )}
+
                 {responseError && (
                   <p className="mt-6 text-sm text-red-400">{responseError}</p>
                 )}
 
                 {![
-                  'COMPLETED',
                   'REJECTED',
                   'CANCELLED_BY_CLIENT',
                   'CANCELLED_BY_ARTIST',
@@ -1214,6 +1596,13 @@ function ClientDashboardPage() {
                       Usa esto solo si no puedes resolver la entrega o pago con
                       el artista.
                     </p>
+                    <textarea
+                      value={disputeReason}
+                      onChange={(event) => setDisputeReason(event.target.value)}
+                      rows="3"
+                      placeholder="Motivo de la disputa"
+                      className="mt-3 w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-red-400"
+                    />
                     <div className="mt-3 flex flex-wrap gap-3">
                       <label className="cursor-pointer rounded-md border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400">
                         Adjuntar evidencia
@@ -1264,15 +1653,23 @@ function ClientDashboardPage() {
                   'CANCELLED_BY_ARTIST',
                   'DISPUTED',
                 ].includes(selectedCommission.status) && (
-                  <div className="mt-6 flex justify-end">
+                  <div className="mt-6 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+                    <textarea
+                      value={cancelReason}
+                      onChange={(event) => setCancelReason(event.target.value)}
+                      rows="3"
+                      placeholder="Motivo de rechazo o cancelacion"
+                      className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-red-400"
+                    />
                     <Button
+                      className="mt-3"
                       variant="secondary"
                       disabled={isCancellingCommission}
                       onClick={handleCancelCommission}
                     >
                       {isCancellingCommission
                         ? 'Cancelando...'
-                        : 'Cancelar comision'}
+                        : 'Rechazar / cancelar comision'}
                     </Button>
                   </div>
                 )}

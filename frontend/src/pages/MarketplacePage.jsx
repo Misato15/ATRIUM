@@ -16,6 +16,7 @@ const initialProductFormData = {
   price: '',
   currency: 'USD',
   coverImageUrl: '',
+  previewVideoUrl: '',
   status: 'DRAFT',
   previewAssets: [],
   downloadAssets: [],
@@ -37,10 +38,20 @@ function getProductStatusLabel(status) {
 
 function getProductPreview(product) {
   return (
-    product.coverImageUrl ||
     product.assets?.find((asset) => asset.kind === 'PREVIEW')?.url ||
+    product.coverImageUrl ||
+    getYoutubeThumbnailUrl(product.previewVideoUrl) ||
     ''
   )
+}
+
+function getYoutubeId(url) {
+  return String(url || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^?&/]+)/)?.[1] || ''
+}
+
+function getYoutubeThumbnailUrl(url) {
+  const id = getYoutubeId(url)
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : ''
 }
 
 async function fetchJson(url, options = {}) {
@@ -64,6 +75,7 @@ function MarketplacePage() {
   const [myProducts, setMyProducts] = useState([])
   const [purchases, setPurchases] = useState([])
   const [productFormData, setProductFormData] = useState(initialProductFormData)
+  const [editingProductId, setEditingProductId] = useState(null)
   const [isProductFormOpen, setIsProductFormOpen] = useState(false)
   const [isSavingProduct, setIsSavingProduct] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -118,6 +130,36 @@ function MarketplacePage() {
     setProductFormData((currentData) => ({
       ...currentData,
       [name]: value,
+    }))
+  }
+
+  function openProductForm(product = null) {
+    setEditingProductId(product?.id || null)
+    setProductFormData(
+      product
+        ? {
+            title: product.title || '',
+            description: product.description || '',
+            price: product.price || '',
+            currency: product.currency || 'USD',
+            coverImageUrl: product.coverImageUrl || '',
+            previewVideoUrl: product.previewVideoUrl || '',
+            status: product.status || 'DRAFT',
+            previewAssets:
+              product.assets?.filter((asset) => asset.kind === 'PREVIEW') || [],
+            downloadAssets:
+              product.assets?.filter((asset) => asset.kind === 'DOWNLOAD') || [],
+          }
+        : initialProductFormData,
+    )
+    setUploadStatus('')
+    setIsProductFormOpen(true)
+  }
+
+  function removeProductAsset(field, url) {
+    setProductFormData((currentData) => ({
+      ...currentData,
+      [field]: currentData[field].filter((asset) => asset.url !== url),
     }))
   }
 
@@ -181,16 +223,25 @@ function MarketplacePage() {
         throw new Error('Debes iniciar sesion para crear productos')
       }
 
-      await fetchJson(`${API_URL}/digital-products`, {
-        method: 'POST',
+      const payload = {
+        ...productFormData,
+        coverImageUrl:
+          productFormData.coverImageUrl ||
+          productFormData.previewAssets[0]?.url ||
+          '',
+      }
+
+      await fetchJson(`${API_URL}/digital-products${editingProductId ? `/${editingProductId}` : ''}`, {
+        method: editingProductId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(productFormData),
+        body: JSON.stringify(payload),
       })
 
       setProductFormData(initialProductFormData)
+      setEditingProductId(null)
       setIsProductFormOpen(false)
       setUploadStatus('')
       setStatusMessage('Producto guardado')
@@ -273,7 +324,7 @@ function MarketplacePage() {
           </div>
 
           {isArtist && (
-            <Button onClick={() => setIsProductFormOpen(true)}>
+            <Button onClick={() => openProductForm()}>
               Crear producto
             </Button>
           )}
@@ -291,10 +342,16 @@ function MarketplacePage() {
             className="mt-6 rounded-lg border border-zinc-800 bg-zinc-900 p-5"
           >
             <div className="flex items-center justify-between gap-4">
-              <h2 className="text-xl font-bold">Nuevo producto digital</h2>
+              <h2 className="text-xl font-bold">
+                {editingProductId ? 'Editar producto digital' : 'Nuevo producto digital'}
+              </h2>
               <button
                 type="button"
-                onClick={() => setIsProductFormOpen(false)}
+                onClick={() => {
+                  setIsProductFormOpen(false)
+                  setEditingProductId(null)
+                  setProductFormData(initialProductFormData)
+                }}
                 className="text-sm font-semibold text-zinc-400 hover:text-white"
               >
                 Cerrar
@@ -331,6 +388,13 @@ function MarketplacePage() {
                 value={productFormData.coverImageUrl}
                 onChange={handleProductFormChange}
                 placeholder="Cover URL opcional"
+                className="rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
+              />
+              <input
+                name="previewVideoUrl"
+                value={productFormData.previewVideoUrl}
+                onChange={handleProductFormChange}
+                placeholder="Link de YouTube opcional"
                 className="rounded-md border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-violet-400"
               />
             </div>
@@ -377,20 +441,36 @@ function MarketplacePage() {
             ].length > 0 && (
               <div className="mt-4 grid gap-2 text-sm text-zinc-300">
                 {productFormData.previewAssets.map((asset) => (
-                  <span
+                  <div
                     key={asset.url}
-                    className="truncate rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2"
+                    className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2"
                   >
-                    Preview: {asset.name || asset.url}
-                  </span>
+                    <span className="truncate">Preview: {asset.name || asset.url}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeProductAsset('previewAssets', asset.url)}
+                      className="shrink-0 text-xs font-semibold text-red-300"
+                    >
+                      Quitar
+                    </button>
+                  </div>
                 ))}
                 {productFormData.downloadAssets.map((asset) => (
-                  <span
+                  <div
                     key={asset.url}
-                    className="truncate rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-emerald-200"
+                    className="flex items-center justify-between gap-3 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-emerald-200"
                   >
-                    Descargable privado: {asset.name || asset.url}
-                  </span>
+                    <span className="truncate">
+                      Descargable privado: {asset.name || asset.url}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeProductAsset('downloadAssets', asset.url)}
+                      className="shrink-0 text-xs font-semibold text-red-300"
+                    >
+                      Quitar
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -419,37 +499,52 @@ function MarketplacePage() {
                     key={product.id}
                     className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900"
                   >
-                    {preview ? (
-                      <img
-                        src={preview}
-                        alt={product.title}
-                        className="h-44 w-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-44 bg-zinc-800" />
-                    )}
+                    <Link to={`/marketplace/products/${product.id}`}>
+                      {preview ? (
+                        <img
+                          src={preview}
+                          alt={product.title}
+                          className="h-44 w-full object-cover transition hover:opacity-80"
+                        />
+                      ) : (
+                        <div className="h-44 bg-zinc-800" />
+                      )}
+                    </Link>
                     <div className="p-5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-violet-400">
                         {getArtistDisplayName(product.artistProfile)}
                       </p>
-                      <h2 className="mt-2 text-xl font-bold">{product.title}</h2>
+                      <Link
+                        to={`/marketplace/products/${product.id}`}
+                        className="mt-2 block text-xl font-bold hover:text-violet-300"
+                      >
+                        {product.title}
+                      </Link>
                       <p className="mt-2 line-clamp-3 text-sm leading-6 text-zinc-400">
                         {product.description}
                       </p>
-                      <div className="mt-4 flex items-center justify-between gap-3">
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-lg font-bold">
                           {product.price} {product.currency}
                         </p>
-                        <Button
-                          disabled={buyingProductId === product.id || owned}
-                          onClick={() => handleBuyProduct(product)}
-                        >
-                          {owned
-                            ? 'Comprado'
-                            : buyingProductId === product.id
-                              ? 'Creando orden...'
-                              : 'Comprar'}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/marketplace/products/${product.id}`}
+                            className="rounded-md border border-zinc-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
+                          >
+                            Ver
+                          </Link>
+                          <Button
+                            disabled={buyingProductId === product.id || owned}
+                            onClick={() => handleBuyProduct(product)}
+                          >
+                            {owned
+                              ? 'Comprado'
+                              : buyingProductId === product.id
+                                ? 'Creando orden...'
+                                : 'Comprar'}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -531,6 +626,13 @@ function MarketplacePage() {
                             {product.price} {product.currency}
                           </p>
                         </div>
+                        <Button
+                          className="mt-3"
+                          variant="secondary"
+                          onClick={() => openProductForm(product)}
+                        >
+                          Editar
+                        </Button>
                       </div>
                     ))}
                   </div>

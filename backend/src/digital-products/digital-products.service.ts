@@ -125,6 +125,28 @@ export class DigitalProductsService {
     });
   }
 
+  async findPublishedById(productId: number) {
+    const product = await this.prisma.digitalProduct.findFirst({
+      where: {
+        id: productId,
+        status: DigitalProductStatus.PUBLISHED,
+        artistProfile: {
+          isHidden: false,
+          user: {
+            isSuspended: false,
+          },
+        },
+      },
+      include: this.getProductInclude(false),
+    });
+
+    if (!product) {
+      throw new NotFoundException('Producto no disponible');
+    }
+
+    return this.hideDownloadAssetUrls(product);
+  }
+
   async findMine(userId: number) {
     const profile = await this.prisma.artistProfile.findUnique({
       where: {
@@ -217,6 +239,7 @@ export class DigitalProductsService {
         currency: dto.currency?.trim() || 'USD',
         coverImageUrl:
           dto.coverImageUrl?.trim() || previewAssets[0]?.url || null,
+        previewVideoUrl: dto.previewVideoUrl?.trim() || null,
         status,
         assets: {
           create: [...previewAssets, ...downloadAssets],
@@ -309,6 +332,9 @@ export class DigitalProductsService {
             : {}),
           ...(dto.coverImageUrl !== undefined
             ? { coverImageUrl: dto.coverImageUrl.trim() || null }
+            : {}),
+          ...(dto.previewVideoUrl !== undefined
+            ? { previewVideoUrl: dto.previewVideoUrl.trim() || null }
             : {}),
           ...(status !== undefined ? { status } : {}),
           assets: {

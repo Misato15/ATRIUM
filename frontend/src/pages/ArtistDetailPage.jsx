@@ -203,6 +203,7 @@ async function handleCommissionSubmit(event) {
   const profileImageUrl = artist.profileImageUrl
   const coverImageUrl = artist.coverImageUrl
   const reviews = artist.reviews || []
+  const publicReviews = reviews.filter((review) => review.isPublic && review.comment)
   const averageRating =
     reviews.length > 0
       ? (
@@ -300,7 +301,7 @@ async function handleCommissionSubmit(event) {
           </p>
         )}
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {artist.startingPrice && (
             <div>
               <p className="text-xs uppercase text-zinc-500">Desde</p>
@@ -319,12 +320,13 @@ async function handleCommissionSubmit(event) {
             </div>
           )}
 
+          {/* ponytail: modality flow is parked until onsite/remote projects have their own rules.
           <div>
             <p className="text-xs uppercase text-zinc-500">Modalidad</p>
             <p className="mt-1 font-semibold text-white">
               {getServiceModeLabel(artist.serviceMode)}
             </p>
-          </div>
+          </div> */}
 
           {artist.serviceArea && (
             <div>
@@ -381,9 +383,9 @@ async function handleCommissionSubmit(event) {
               </h2>
             </div>
 
-            {reviews.length > 0 ? (
+            {publicReviews.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                {reviews.map((review) => (
+                {publicReviews.map((review) => (
                   <article
                     key={review.id}
                     className="rounded-lg border border-zinc-800 bg-zinc-900 p-5"
@@ -404,7 +406,7 @@ async function handleCommissionSubmit(event) {
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-zinc-700 p-6 text-sm text-zinc-400">
-                Este artista aun no tiene reviews de comisiones completadas.
+                Este artista aun no tiene comentarios publicos aprobados.
               </div>
             )}
           </section>
@@ -412,7 +414,7 @@ async function handleCommissionSubmit(event) {
       </section>
 
       {isCommissionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+        <div className="dialog-motion fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -478,6 +480,7 @@ async function handleCommissionSubmit(event) {
                   />
                 </div>
 
+                {/* ponytail: keep backend default serviceMode, hide choice until this flow is defined.
                 <div>
                   <label className="text-sm font-medium text-zinc-300">
                     Modalidad
@@ -492,7 +495,7 @@ async function handleCommissionSubmit(event) {
                     <option value="IN_PERSON">Presencial</option>
                     <option value="BOTH">Online y presencial</option>
                   </select>
-                </div>
+                </div> */}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">

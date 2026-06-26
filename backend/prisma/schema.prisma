@@ -154,6 +154,7 @@ model ArtistCategory {
 enum CommissionStatus {
   PENDING
   REVIEWED
+  INQUIRY
   PROPOSED
   CLIENT_ACCEPTED
   CLIENT_REJECTED
@@ -241,6 +242,7 @@ model CommissionRequest {
   desiredDeadline        DateTime?
   isFlexibleDeadline     Boolean              @default(false)
   serviceMode            ServiceMode?
+  clientNote             String?              @db.Text
   artistNote             String?              @db.Text
   artistResponse         String?              @db.Text
   quotedPrice            String?
@@ -360,6 +362,7 @@ model DigitalProduct {
   price           String
   currency        String               @default("USD")
   coverImageUrl   String?              @db.Text
+  previewVideoUrl String?              @db.Text
   status          DigitalProductStatus @default(DRAFT)
   artistProfile   ArtistProfile        @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
   assets          DigitalProductAsset[]
@@ -411,6 +414,7 @@ model ClientReview {
   commissionRequestId Int               @unique
   rating              Int
   comment             String            @db.Text
+  isPublic            Boolean           @default(false)
   clientUser          User              @relation("ClientReviewsReceived", fields: [clientUserId], references: [id], onDelete: Cascade)
   artistProfile       ArtistProfile     @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
   commissionRequest   CommissionRequest @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
@@ -426,6 +430,7 @@ model Review {
   clientName          String
   rating              Int
   comment             String            @db.Text
+  isPublic            Boolean           @default(false)
   artistProfile       ArtistProfile     @relation(fields: [artistProfileId], references: [id], onDelete: Cascade)
   commissionRequest   CommissionRequest @relation(fields: [commissionRequestId], references: [id], onDelete: Cascade)
 

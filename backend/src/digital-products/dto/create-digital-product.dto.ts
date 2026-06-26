@@ -6,6 +6,7 @@ export class CreateDigitalProductDto {
   price?: string;
   currency?: string;
   coverImageUrl?: string;
+  previewVideoUrl?: string;
   status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   previewAssets?: DigitalProductAssetDto[];
   downloadAssets?: DigitalProductAssetDto[];

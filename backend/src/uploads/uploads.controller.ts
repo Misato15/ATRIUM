@@ -28,6 +28,17 @@ export class UploadsController {
     '.musicxml',
     '.mid',
     '.midi',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.bmp',
+    '.tiff',
+    '.webp',
+    '.mp4',
+    '.mov',
+    '.avi',
+    '.mkv',
   ]);
 
   private ensureFile(file: Express.Multer.File | undefined, message: string) {
